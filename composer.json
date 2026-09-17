@@ -1,0 +1,22 @@
+{
+    "name": "mala/cafe-russell",
+    "description": "Application de gestion du Café Russell",
+    "type": "project",
+    "authors": [
+        {
+            "name": "Mala",
+            "email": "malachiebotoko03@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "ext-pdo": "*",
+        "ext-pdo_pgsql": "*",
+        "vlucas/phpdotenv": "^5.7"
+    },
+    "autoload": {
+        "psr-4": {
+            "Mala\\CafeRussell\\": "src/"
+        }
+    }
+}
