@@ -17,10 +17,6 @@ CREATE TYPE activite_statut AS ENUM (
 
 CREATE TABLE activites (
 
-    ALTER TABLE activites
-    ADD CONSTRAINT uq_activite_vendeur
-    UNIQUE (id, vendeur_id);
-
     id BIGSERIAL PRIMARY KEY,
 
     journee_id BIGINT NOT NULL,
@@ -76,6 +72,11 @@ CREATE TABLE activites (
             )
         )
 );
+
+ALTER TABLE activites
+    ADD CONSTRAINT uq_activite_vendeur
+    UNIQUE (id, vendeur_id);
+
 
 -- Un vendeur ne peut avoir qu'une activité
 -- en cours pendant une même journée.
