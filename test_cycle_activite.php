@@ -139,8 +139,8 @@ try {
     verifier('Statut du contrôle', $resume['statut_controle'], 'aucun_ecart');
     verifier('Transport (LONGUE)', $resume['transport'], 3000);
     verifier('Commission 25 %', $resume['commission'], 8125);
-    verifier('Consommables', $resume['consommables'], 8750);
-    verifier('Bénéfice', $resume['benefice'], 12625);
+    verifier('Consommables (sur les 30 + 20 tasses reçues)', $resume['consommables'], 9500);
+    verifier('Bénéfice', $resume['benefice'], 11875);
     verifier('Bénéficiaire', $resume['beneficiaire_benefice'], 'entreprise');
 
     $statutActivite = (string) $db->query(

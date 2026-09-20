@@ -134,27 +134,21 @@ class ActiviteService
             }
 
             /*
-             * Le CA et le coût doivent être recalculés
-             * sur les quantités réellement vendues.
+             * Le CA est recalculé sur les quantités réellement vendues.
+             *
+             * Les consommables restent comptés sur les quantités
+             * REÇUES (règle confirmée) : ils ne sont pas recalculés.
              */
             $prixMoyen = 0.00;
-            $coutMoyen = 0.00;
 
             if ($quantite['recue'] > 0) {
                 $prixMoyen =
                     $quantite['ca']
                     / $quantite['recue'];
-
-                $coutMoyen =
-                    $quantite['consommables']
-                    / $quantite['recue'];
             }
 
             $quantite['ca'] =
                 $quantite['vendue'] * $prixMoyen;
-
-            $quantite['consommables'] =
-                $quantite['vendue'] * $coutMoyen;
 
             $caTotal += $quantite['ca'];
             $consommablesTotal +=

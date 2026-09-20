@@ -125,6 +125,24 @@ class JourneeService
             throw new RuntimeException('Utilisateur introuvable.');
         }
 
+        // Règle confirmée : on ne clôture pas une journée qui contient
+        // encore des activités en cours.
+        $stmt = $this->db->prepare("
+            SELECT COUNT(*)
+            FROM activites
+            WHERE journee_id = :id
+              AND statut = 'en_cours'
+        ");
+
+        $stmt->execute(['id' => $journeeId]);
+
+        if ((int) $stmt->fetchColumn() > 0) {
+            throw new RuntimeException(
+                'Impossible de clôturer la journée : '
+                . 'des activités sont encore en cours.'
+            );
+        }
+
         $sql = "
             UPDATE journees
             SET

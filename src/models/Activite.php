@@ -39,7 +39,7 @@ class Activite
                 v.prenom AS vendeur_prenom,
 
                 s.numero AS sac_numero,
-                s.categorie AS sac_categorie,
+                a.sac_categorie AS sac_categorie,
                 s.statut AS sac_statut
 
             FROM activites a
@@ -91,7 +91,7 @@ class Activite
                 v.prenom AS vendeur_prenom,
 
                 s.numero AS sac_numero,
-                s.categorie AS sac_categorie
+                a.sac_categorie AS sac_categorie
 
             FROM activites a
 
@@ -140,7 +140,7 @@ class Activite
                 a.updated_at,
 
                 s.numero AS sac_numero,
-                s.categorie AS sac_categorie
+                a.sac_categorie AS sac_categorie
 
             FROM activites a
 

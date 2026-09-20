@@ -9,8 +9,28 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 $dotenv = Dotenv::createImmutable(dirname(__DIR__, 2));
 $dotenv->safeLoad();
 
+/*
+ * L'application fonctionne à Kinshasa : toutes les dates métier
+ * (PHP et PostgreSQL) suivent ce fuseau horaire.
+ */
+const FUSEAU_HORAIRE_APPLICATION = 'Africa/Kinshasa';
+
+date_default_timezone_set(FUSEAU_HORAIRE_APPLICATION);
+
+/**
+ * Retourne la connexion PostgreSQL de l'application.
+ *
+ * La connexion est unique et partagée : les modèles et les services
+ * utilisent la même transaction quand une opération en appelle une autre.
+ */
 function getDatabaseConnection(): PDO
 {
+    static $connexion = null;
+
+    if ($connexion instanceof PDO) {
+        return $connexion;
+    }
+
     $databaseUrl = $_ENV['DATABASE_URL'] ?? '';
 
     if ($databaseUrl === '') {
@@ -49,7 +69,7 @@ function getDatabaseConnection(): PDO
         $dbname
     );
 
-    return new PDO(
+    $connexion = new PDO(
         $dsn,
         $user,
         $password,
@@ -59,4 +79,11 @@ function getDatabaseConnection(): PDO
             PDO::ATTR_EMULATE_PREPARES => false,
         ]
     );
+
+    // CURRENT_DATE, dates par défaut, etc. : heure de Kinshasa.
+    $connexion->exec(
+        "SET TIME ZONE '" . FUSEAU_HORAIRE_APPLICATION . "'"
+    );
+
+    return $connexion;
 }
