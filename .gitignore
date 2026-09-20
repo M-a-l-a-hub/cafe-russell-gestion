@@ -3,3 +3,5 @@
 /storage/logs/*
 storage/backups/*
 .git-corrompu/
+
+*.swp
