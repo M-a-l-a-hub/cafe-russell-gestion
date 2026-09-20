@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../models/Journee.php';
 require_once __DIR__ . '/../models/Site.php';
 require_once __DIR__ . '/../models/User.php';
+require_once __DIR__ . '/AuditService.php';
 
 class JourneeService
 {
@@ -202,28 +203,58 @@ class JourneeService
             );
         }
 
-        $sql = "
-            UPDATE journees
-            SET
-                statut = 'ouverte',
-                cloturee_par = NULL,
-                date_cloture = NULL,
-                note_cloture = NULL,
-                updated_at = NOW()
-            WHERE id = :id
-              AND statut = 'cloturee'
-        ";
+        $this->db->beginTransaction();
 
-        $stmt = $this->db->prepare($sql);
+        try {
+            $sql = "
+                UPDATE journees
+                SET
+                    statut = 'ouverte',
+                    cloturee_par = NULL,
+                    date_cloture = NULL,
+                    note_cloture = NULL,
+                    updated_at = NOW()
+                WHERE id = :id
+                  AND statut = 'cloturee'
+            ";
 
-        $stmt->execute([
-            'id' => $journeeId
-        ]);
+            $stmt = $this->db->prepare($sql);
 
-        if ($stmt->rowCount() !== 1) {
-            throw new RuntimeException(
-                'La journée n’a pas pu être rouverte.'
+            $stmt->execute([
+                'id' => $journeeId
+            ]);
+
+            if ($stmt->rowCount() !== 1) {
+                throw new RuntimeException(
+                    'La journée n’a pas pu être rouverte.'
+                );
+            }
+
+            // La réouverture doit rester traçable : l'UPDATE efface
+            // les informations de clôture, l'audit les conserve.
+            AuditService::enregistrer(
+                $this->db,
+                $userId,
+                'journee_rouverte',
+                'journees',
+                $journeeId,
+                (int) $journee['site_id'],
+                [
+                    'statut' => 'cloturee',
+                    'cloturee_par' => $journee['cloturee_par'],
+                    'date_cloture' => $journee['date_cloture'],
+                ],
+                ['statut' => 'ouverte'],
+                trim($raison)
             );
+
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+
+            throw $e;
         }
     }
 
