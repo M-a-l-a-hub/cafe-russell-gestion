@@ -37,6 +37,8 @@ class RapportService extends ServiceBase
             'commissions' => 0.0,
             'consommables' => 0.0,
             'benefice_activites' => 0.0,
+            'benefice_entreprise' => 0.0,
+            'benefice_russell' => 0.0,
             'depenses_site' => 0.0,
             'benefice_apres_depenses_site' => 0.0,
             'ecarts' => [],
@@ -52,6 +54,12 @@ class RapportService extends ServiceBase
             $resume['commissions'] += $calcul['commission'];
             $resume['consommables'] += $calcul['consommables'];
             $resume['benefice_activites'] += $calcul['benefice'];
+            
+            if ($calcul['beneficiaire_benefice'] === 'russell') {
+                $resume['benefice_russell'] += $calcul['benefice'];
+            } else {
+                $resume['benefice_entreprise'] += $calcul['benefice'];
+            }
         }
 
         $depenses = $this->fetchOne(
@@ -78,7 +86,7 @@ class RapportService extends ServiceBase
             ['journee_id' => $journeeId]
         );
 
-        foreach (['ventes', 'transport', 'commissions', 'consommables', 'benefice_activites'] as $cle) {
+        foreach (['ventes', 'transport', 'commissions', 'consommables', 'benefice_activites', 'benefice_entreprise', 'benefice_russell'] as $cle) {
             $resume[$cle] = round($resume[$cle], 2);
         }
 
