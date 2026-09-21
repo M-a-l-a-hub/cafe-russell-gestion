@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/ServiceBase.php';
 require_once __DIR__ . '/AuditService.php';
+require_once __DIR__ . '/AutorisationService.php';
 
 /**
  * Enregistrement des dépenses générales (loyer, matériel, lait, sucre,
@@ -86,6 +87,8 @@ class DepenseService extends ServiceBase
                 }
 
                 if ($siteId !== null) {
+                    (new AutorisationService($this->db))->verifierSite($userId, $siteId);
+
                     $site = $this->fetchOne(
                         "SELECT id FROM sites WHERE id = :id",
                         ['id' => $siteId]

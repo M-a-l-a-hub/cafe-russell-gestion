@@ -84,6 +84,8 @@ class ClotureActiviteService extends ServiceBase
                     );
                 }
 
+                $this->verifierAccesSite($userId, (int) $activite['site_id']);
+
                 $retour = $this->fetchOne(
                     "
                     SELECT id

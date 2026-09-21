@@ -69,6 +69,8 @@ class MouvementSacService extends ServiceBase
                     );
                 }
 
+                $this->verifierAccesSite($userId, $siteDepartId);
+
                 $activiteEnCours = $this->fetchOne(
                     "
                     SELECT id
@@ -108,6 +110,8 @@ class MouvementSacService extends ServiceBase
                         "Le site {$siteArrivee['nom']} est désactivé."
                     );
                 }
+
+                $this->verifierAccesSite($userId, $siteArriveeId);
 
                 $doublon = $this->fetchOne(
                     "

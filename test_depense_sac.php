@@ -159,8 +159,15 @@ try {
     verifier('Sac créé : catégorie', valeur($db, 'SELECT categorie FROM sacs WHERE id = :id', ['id' => $sacId]), 'standard');
     verifier('Sac créé : audit', valeur($db, "SELECT COUNT(*) FROM audit_logs WHERE action = 'sac_cree' AND enregistrement_id = :id", ['id' => $sacId]), 1);
 
-    $sacRussell = $sacService->creer($siteId, "TESTR-{$suffixe}", 'russell', $adminId);
-    $sacsCrees[] = $sacRussell;
+    $sacRussell = (int) valeur(
+        $db,
+        "SELECT id FROM sacs WHERE site_id = :site_id AND numero = '19'",
+        ['site_id' => $siteId]
+    );
+
+    if ($sacRussell === 0) {
+        throw new RuntimeException('Sac Russell n°19 introuvable dans les données de démonstration.');
+    }
 
     verifier('Sac Russell créé : catégorie', valeur($db, 'SELECT categorie FROM sacs WHERE id = :id', ['id' => $sacRussell]), 'russell');
 

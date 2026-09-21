@@ -6,6 +6,12 @@ use Dotenv\Dotenv;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+if (!defined('FUSEAU_HORAIRE_APPLICATION')) {
+    define('FUSEAU_HORAIRE_APPLICATION', 'Africa/Kinshasa');
+}
+
+date_default_timezone_set(FUSEAU_HORAIRE_APPLICATION);
+
 $dotenv = Dotenv::createImmutable(dirname(__DIR__));
 $dotenv->safeLoad();
 
@@ -49,7 +55,7 @@ function getDatabaseConnection(): PDO
         $dbname
     );
 
-    return new PDO(
+    $connexion = new PDO(
         $dsn,
         $user,
         $password,
@@ -59,4 +65,8 @@ function getDatabaseConnection(): PDO
             PDO::ATTR_EMULATE_PREPARES => false,
         ]
     );
+
+    $connexion->exec("SET TIME ZONE '" . FUSEAU_HORAIRE_APPLICATION . "'");
+
+    return $connexion;
 }

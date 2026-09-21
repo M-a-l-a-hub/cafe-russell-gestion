@@ -64,6 +64,8 @@ class RetourService extends ServiceBase
                     );
                 }
 
+                $this->verifierAccesSite($userId, (int) $activite['site_id']);
+
                 $existant = $this->fetchOne(
                     "
                     SELECT id

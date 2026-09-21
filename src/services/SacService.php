@@ -43,9 +43,19 @@ class SacService extends ServiceBase
             );
         }
 
+        $numeroRussell = in_array($numero, ['19', '66'], true);
+
+        if ($numeroRussell !== ($categorie === 'russell')) {
+            throw new InvalidArgumentException(
+                'Les sacs 19 et 66 sont réservés à Russell ; les autres sacs '
+                . 'appartiennent à la catégorie standard.'
+            );
+        }
+
         return $this->transaction(
             function () use ($siteId, $numero, $categorie, $userId): int {
                 $this->verifierUtilisateur($userId);
+                $this->verifierAccesSite($userId, $siteId);
 
                 $site = $this->fetchOne(
                     "SELECT id, nom FROM sites WHERE id = :id FOR UPDATE",

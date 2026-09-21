@@ -63,6 +63,8 @@ class AnnulationActiviteService extends ServiceBase
                     );
                 }
 
+                $this->verifierAccesSite($userId, (int) $activite['site_id']);
+
                 $ravitaillements = (int) $this->fetchOne(
                     "SELECT COUNT(*) AS nb FROM ravitaillements WHERE activite_id = :id",
                     ['id' => $activiteId]

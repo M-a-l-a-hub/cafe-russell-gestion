@@ -6,6 +6,7 @@ require_once __DIR__ . '/../models/Journee.php';
 require_once __DIR__ . '/../models/Site.php';
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/AuditService.php';
+require_once __DIR__ . '/AutorisationService.php';
 
 class JourneeService
 {
@@ -41,6 +42,8 @@ class JourneeService
         if (!(bool) $site['actif']) {
             throw new RuntimeException('Impossible d’ouvrir une journée pour un site désactivé.');
         }
+
+        (new AutorisationService($this->db))->verifierSite($userId, $siteId);
 
         // Vérifier que l'utilisateur existe.
         $user = $this->user->findById($userId);
@@ -112,6 +115,11 @@ class JourneeService
         if (!$journee) {
             throw new RuntimeException('Journée introuvable.');
         }
+
+        (new AutorisationService($this->db))->verifierSite(
+            $userId,
+            (int) $journee['site_id']
+        );
 
         if ($journee['statut'] !== 'ouverte') {
             throw new RuntimeException(

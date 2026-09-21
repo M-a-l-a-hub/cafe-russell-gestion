@@ -85,7 +85,7 @@ class RavitaillementService extends ServiceBase
 
                 $journee = $this->fetchOne(
                     "
-                    SELECT id, statut
+                    SELECT id, site_id, statut
                     FROM journees
                     WHERE id = :id
                     FOR UPDATE
@@ -103,6 +103,8 @@ class RavitaillementService extends ServiceBase
                         . 'aucun ravitaillement possible.'
                     );
                 }
+
+                $this->verifierAccesSite($userId, (int) $journee['site_id']);
 
                 $vendeur = $this->fetchOne(
                     "
@@ -256,6 +258,8 @@ class RavitaillementService extends ServiceBase
                 . 'aucun ravitaillement possible.'
             );
         }
+
+        $this->verifierAccesSite($userId, (int) $activite['site_id']);
 
         $date = (string) $activite['date_jour'];
 

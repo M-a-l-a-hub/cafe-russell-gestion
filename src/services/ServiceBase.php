@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/AuditService.php';
+require_once __DIR__ . '/AutorisationService.php';
 
 /**
  * Socle commun des services d'écriture.
@@ -16,6 +17,11 @@ abstract class ServiceBase
     protected const PERIODES_ACTIVITE = ['matin', 'soir', 'journee'];
 
     protected PDO $db;
+
+    protected function verifierAccesSite(int $userId, int $siteId): void
+    {
+        (new AutorisationService($this->db))->verifierSite($userId, $siteId);
+    }
 
     public function __construct()
     {
@@ -214,6 +220,8 @@ abstract class ServiceBase
                 . 'impossible d’y démarrer une activité.'
             );
         }
+
+        $this->verifierAccesSite($userId, (int) $journee['site_id']);
 
         $vendeur = $this->fetchOne(
             "

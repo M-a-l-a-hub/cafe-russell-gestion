@@ -13,7 +13,9 @@ $dotenv->safeLoad();
  * L'application fonctionne à Kinshasa : toutes les dates métier
  * (PHP et PostgreSQL) suivent ce fuseau horaire.
  */
-const FUSEAU_HORAIRE_APPLICATION = 'Africa/Kinshasa';
+if (!defined('FUSEAU_HORAIRE_APPLICATION')) {
+    define('FUSEAU_HORAIRE_APPLICATION', 'Africa/Kinshasa');
+}
 
 date_default_timezone_set(FUSEAU_HORAIRE_APPLICATION);
 
