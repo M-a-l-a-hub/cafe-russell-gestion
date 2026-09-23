@@ -1,0 +1,274 @@
+/* Café Russell — palette café : crème, brun torréfié, terracotta chaud */
+:root {
+  --creme: #F6EFE4;
+  --creme-2: #EFE3D0;
+  --brun-900: #2B1B12;
+  --brun-700: #4A2F1F;
+  --brun-500: #7A5230;
+  --terracotta: #C4602E;
+  --terracotta-700: #9C4B22;
+  --vert: #4C6B4F;
+  --rouge: #A6402E;
+  --ombre: 0 2px 10px rgba(43, 27, 18, 0.12);
+  --rayon: 10px;
+  font-size: 16px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--creme);
+  color: var(--brun-900);
+  font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  min-height: 100vh;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+h1, h2, h3 { font-family: 'Fraunces', Georgia, serif; font-weight: 600; margin: 0 0 .4em; color: var(--brun-900); }
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.15rem; }
+p { line-height: 1.5; }
+
+button, input, select {
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+/* ---------- Écran de connexion ---------- */
+.ecran-connexion {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.ecran-connexion[hidden] { display: none; }
+.carte-connexion {
+  background: white;
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+  padding: 32px 28px;
+  width: 100%;
+  max-width: 360px;
+}
+.carte-connexion .tasse {
+  font-size: 2rem;
+  margin-bottom: 4px;
+}
+.carte-connexion p.sous-titre {
+  color: var(--brun-500);
+  margin-top: -6px;
+  margin-bottom: 20px;
+  font-size: .95rem;
+}
+
+.champ { margin-bottom: 16px; }
+.champ label {
+  display: block;
+  font-size: .85rem;
+  color: var(--brun-700);
+  margin-bottom: 6px;
+}
+.champ input, .champ select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--creme-2);
+  border-radius: 8px;
+  background: var(--creme);
+  color: var(--brun-900);
+}
+.champ input:focus, .champ select:focus, button:focus-visible {
+  outline: 2px solid var(--terracotta);
+  outline-offset: 1px;
+}
+
+button.principal {
+  width: 100%;
+  padding: 13px;
+  background: var(--terracotta);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.principal:active { background: var(--terracotta-700); }
+button.principal:disabled { opacity: .6; cursor: default; }
+
+button.secondaire {
+  width: 100%;
+  padding: 11px;
+  background: transparent;
+  color: var(--brun-700);
+  border: 1px solid var(--creme-2);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.message-erreur {
+  background: #FBEAE5;
+  color: var(--rouge);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: .9rem;
+  margin-bottom: 16px;
+}
+.message-succes {
+  background: #EAF1EA;
+  color: var(--vert);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: .9rem;
+  margin-bottom: 16px;
+}
+
+/* ---------- Coquille applicative ---------- */
+.app { display: none; min-height: 100vh; flex-direction: column; }
+.app.visible { display: flex; }
+
+.entete {
+  background: var(--brun-900);
+  color: var(--creme);
+  padding: 14px 18px calc(14px + env(safe-area-inset-top, 0px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.entete .qui { font-size: .85rem; opacity: .85; }
+.entete .titre-site { font-weight: 600; }
+.entete .bloc-titre { display: flex; align-items: center; gap: 10px; }
+.entete .icone-entete { flex-shrink: 0; opacity: .9; }
+.entete select#selecteur-site {
+  background: var(--brun-700);
+  color: var(--creme);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.entete button.deconnexion {
+  background: none;
+  border: none;
+  color: var(--creme);
+  opacity: .8;
+  font-size: .85rem;
+  cursor: pointer;
+}
+
+main.contenu {
+  flex: 1;
+  padding: 16px 16px 90px;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+nav.bas {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-top: 1px solid var(--creme-2);
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  z-index: 5;
+}
+nav.bas button {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 10px 4px 8px;
+  color: var(--brun-500);
+  font-size: .72rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+nav.bas button .icone { width: 21px; height: 21px; }
+nav.bas button.actif { color: var(--terracotta-700); font-weight: 600; }
+
+/* Sur grand écran : navigation latérale au lieu du bas */
+@media (min-width: 860px) {
+  .app { flex-direction: row; }
+  nav.bas {
+    position: static;
+    flex-direction: column;
+    width: 200px;
+    border-top: none;
+    border-right: 1px solid var(--creme-2);
+    padding-top: 12px;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+  }
+  nav.bas button {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 12px 20px;
+    font-size: .9rem;
+    gap: 10px;
+  }
+  main.contenu { padding-bottom: 24px; max-width: 900px; }
+  .colonne-app { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+}
+
+/* ---------- Cartes / listes ---------- */
+.carte {
+  background: white;
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.carte-titre {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.etiquette {
+  display: inline-block;
+  font-size: .72rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--creme-2);
+  color: var(--brun-700);
+}
+.etiquette.ouverte { background: #EAF1EA; color: var(--vert); }
+.etiquette.cloturee { background: var(--creme-2); color: var(--brun-500); }
+.etiquette.ecart { background: #FBEAE5; color: var(--rouge); }
+
+.ligne { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--creme-2); font-size: .92rem; }
+.ligne:last-child { border-bottom: none; }
+.ligne .montant { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.liste-vide {
+  text-align: center;
+  color: var(--brun-500);
+  padding: 40px 16px;
+  font-size: .95rem;
+}
+
+.grille-produits { display: grid; gap: 10px; }
+.ligne-produit {
+  display: grid;
+  grid-template-columns: 1fr 90px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--creme-2);
+}
+.ligne-produit:last-child { border-bottom: none; }
+.ligne-produit input { text-align: center; }
+
+.barre-actions { display: flex; gap: 10px; margin-top: 18px; }
+.barre-actions button.principal { flex: 1; }
+
+.chargement { text-align: center; padding: 30px; color: var(--brun-500); }

@@ -32,6 +32,7 @@ Lectures (GET)
 | `/api/sites` | sites accessibles |
 | `/api/produits` | produits + prix du jour (coût visible par Russell seulement) |
 | `/api/vendeurs` | vendeurs actifs |
+| `/api/categories-transport` | catégories de transport avec leur tarif actuel |
 | `/api/categories-depenses` | catégories de dépenses |
 | `/api/sites/{id}/sacs` | sacs du site |
 | `/api/sites/{id}/journees?statut=ouverte&limite=30` | journées du site |
@@ -64,6 +65,9 @@ Actions (POST)
 | `/api/ecarts/{id}/mise-en-resolution` | `motif` |
 | `/api/ecarts/{id}/resolution` | `motif` (Russell) |
 | `/api/tarifs` | `type (prix\|cout\|transport), entite_id, valeur, date_debut, motif?` (Russell) |
+| `/api/vendeurs` | `nom, prenom?, telephone?, categorie_transport_id, periode_habituelle?` (code généré automatiquement) |
+| `/api/vendeurs/{id}/categorie-transport` | `categorie_transport_id, motif?` |
+| `/api/vendeurs/{id}/desactivation` | `motif` |
 | `/api/sacs` | `site_id, numero, categorie` |
 | `/api/sacs/{id}/indisponibilite` | `motif` |
 | `/api/sacs/{id}/disponibilite` | `note?` |
@@ -73,7 +77,7 @@ Actions (POST)
 
 ```bash
 php bin/definir-mot-de-passe.php +243000000001
-php -S 127.0.0.1:8000 public/index.php
+php -S 127.0.0.1:8000 -t public public/index.php
 
 curl -s localhost:8000/api/sante
 

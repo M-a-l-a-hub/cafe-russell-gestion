@@ -18,6 +18,9 @@ $journees = new JourneesControleur();
 $activites = new ActivitesControleur();
 $finances = new FinancesControleur();
 $sacs = new SacsControleur();
+$vendeursCtrl = new VendeursControleur();
+$sitesCtrl = new SitesControleur();
+$responsablesCtrl = new ResponsablesControleur();
 
 $russell = ['role' => 'super_admin'];
 
@@ -29,9 +32,11 @@ $r->get('/api/moi', [$auth, 'moi']);
 
 // --- Lectures ----------------------------------------------------------
 $r->get('/api/sites', [$lectures, 'sites']);
+$r->get('/api/responsables', [$sitesCtrl, 'responsables'], $russell);
 $r->get('/api/produits', [$lectures, 'produits']);
 $r->get('/api/vendeurs', [$lectures, 'vendeurs']);
 $r->get('/api/categories-depenses', [$lectures, 'categoriesDepenses']);
+$r->get('/api/categories-transport', [$vendeursCtrl, 'categoriesTransport']);
 $r->get('/api/sites/{id}/sacs', [$lectures, 'sacsSite']);
 $r->get('/api/sites/{id}/journees', [$lectures, 'journeesSite']);
 $r->get('/api/sites/{id}/depenses', [$lectures, 'depensesSite']);
@@ -64,6 +69,18 @@ $r->post('/api/depenses', [$finances, 'depense']);
 $r->post('/api/ecarts/{id}/mise-en-resolution', [$finances, 'mettreEnResolution']);
 $r->post('/api/ecarts/{id}/resolution', [$finances, 'resoudreEcart'], $russell);
 $r->post('/api/tarifs', [$finances, 'changerTarif'], $russell);
+
+// --- Vendeurs ------------------------------------------------------------
+$r->post('/api/vendeurs', [$vendeursCtrl, 'creer']);
+$r->post('/api/vendeurs/{id}/categorie-transport', [$vendeursCtrl, 'changerCategorieTransport']);
+$r->post('/api/vendeurs/{id}/desactivation', [$vendeursCtrl, 'desactiver']);
+
+// --- Sites -------------------------------------------------------------
+$r->post('/api/sites', [$sitesCtrl, 'creer'], $russell);
+$r->post('/api/sites/{id}/modification', [$sitesCtrl, 'modifier'], $russell);
+$r->post('/api/sites/{id}/desactivation', [$sitesCtrl, 'desactiver'], $russell);
+$r->post('/api/sites/{id}/responsable', [$sitesCtrl, 'affecterResponsable'], $russell);
+$r->post('/api/responsables', [$responsablesCtrl, 'creer'], $russell);
 
 // --- Sacs --------------------------------------------------------------
 $r->post('/api/sacs', [$sacs, 'creer']);

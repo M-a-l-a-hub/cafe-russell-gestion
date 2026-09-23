@@ -266,6 +266,14 @@ final class Requete
     // Paramètres d'URL (?cle=valeur)
     // ------------------------------------------------------------------
 
+    /** Paramètre d'URL brut, sans validation (ex. un simple indicateur ?tous=1). */
+    public function query(string $cle): ?string
+    {
+        $valeur = $this->query[$cle] ?? null;
+
+        return is_string($valeur) && $valeur !== '' ? $valeur : null;
+    }
+
     public function queryEntier(string $cle): ?int
     {
         return self::versEntier($this->query[$cle] ?? null, $cle);

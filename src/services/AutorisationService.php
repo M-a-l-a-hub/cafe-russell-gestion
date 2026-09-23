@@ -41,7 +41,7 @@ class AutorisationService
         $stmt->execute(['user_id' => $userId, 'site_id' => $siteId]);
 
         if ($stmt->fetchColumn() === false) {
-            throw new RuntimeException(
+            throw new AccesRefuseException(
                 'Cet utilisateur n’est pas autorisé à agir sur ce site.'
             );
         }
@@ -52,7 +52,7 @@ class AutorisationService
         $user = $this->fetchUser($userId);
 
         if ($user['role'] !== 'super_admin') {
-            throw new RuntimeException(
+            throw new AccesRefuseException(
                 'Cette opération est réservée au super administrateur.'
             );
         }

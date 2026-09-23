@@ -20,7 +20,21 @@ final class LecturesControleur extends ControleurBase
 
         return $this->lignes(
             "
-            SELECT s.id, s.code, s.nom, s.adresse
+                        SELECT
+                                s.id,
+                                s.code,
+                                s.nom,
+                                s.adresse,
+                                s.description,
+                                (
+                                        SELECT CONCAT_WS(' ', u.prenom, u.nom)
+                                        FROM site_responsables sr
+                                        INNER JOIN users u ON u.id = sr.user_id
+                                        WHERE sr.site_id = s.id
+                                            AND sr.type = 'principal'
+                                            AND sr.actif = TRUE
+                                        LIMIT 1
+                                ) AS responsable_principal
             FROM sites s
             WHERE s.actif = TRUE{$restriction}
             ORDER BY s.nom
@@ -71,8 +85,11 @@ final class LecturesControleur extends ControleurBase
     }
 
     /** GET /api/vendeurs */
+    /** GET /api/vendeurs?tous=1 : ?tous=1 inclut aussi les vendeurs désactivés. */
     public function vendeurs(Requete $req): array
     {
+        $tous = $req->query('tous') === '1';
+
         return $this->lignes(
             "
             SELECT
@@ -82,11 +99,13 @@ final class LecturesControleur extends ControleurBase
                 v.prenom,
                 v.telephone,
                 v.periode_habituelle,
+                v.actif,
+                v.categorie_transport_id,
                 ct.code AS categorie_transport
             FROM vendeurs v
             INNER JOIN categories_transport ct
                 ON ct.id = v.categorie_transport_id
-            WHERE v.actif = TRUE
+            " . ($tous ? '' : 'WHERE v.actif = TRUE') . "
             ORDER BY v.nom, v.prenom
             "
         );
@@ -103,6 +122,32 @@ final class LecturesControleur extends ControleurBase
             ORDER BY nom
             "
         );
+    }
+
+    /** GET /api/categories-transport : catégories de distance et leur tarif actuel. */
+    public function categoriesTransport(Requete $req): array
+    {
+        $lignes = $this->lignes(
+            "
+            SELECT
+                ct.id,
+                ct.code,
+                ct.nom,
+                (
+                    SELECT tp.montant_par_ravitaillement
+                    FROM transport_prix tp
+                    WHERE tp.categorie_transport_id = ct.id
+                      AND tp.date_debut <= CURRENT_DATE
+                      AND (tp.date_fin IS NULL OR tp.date_fin >= CURRENT_DATE)
+                    LIMIT 1
+                ) AS tarif_actuel
+            FROM categories_transport ct
+            WHERE ct.actif = TRUE
+            ORDER BY tarif_actuel NULLS LAST, ct.nom
+            "
+        );
+
+        return $this->versFlottants($lignes, ['tarif_actuel']);
     }
 
     /** GET /api/sites/{id}/sacs */
