@@ -106,4 +106,33 @@ final class ActivitesControleur extends ControleurBase
 
         return ['anomalie_id' => $id, 'statut' => 'resolue'];
     }
+    /** POST /api/ravitaillements/{id}/correction {lignes, motif} */
+    public function corrigerRavitaillement(Requete $req): array
+    {
+        $id = $req->parametreChemin('id');
+
+        (new RavitaillementService())->corriger(
+            $id,
+            $req->liste('lignes'),
+            $this->utilisateurId($req),
+            $req->texte('motif')
+        );
+
+        return ['ravitaillement_id' => $id, 'corrige' => true];
+    }
+
+    /** POST /api/retours/{id}/correction {lignes, motif} */
+    public function corrigerRetour(Requete $req): array
+    {
+        $id = $req->parametreChemin('id');
+
+        (new RetourService())->corriger(
+            $id,
+            $req->liste('lignes'),
+            $this->utilisateurId($req),
+            $req->texte('motif')
+        );
+
+        return ['retour_id' => $id, 'corrige' => true];
+    }
 }

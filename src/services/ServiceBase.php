@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/AuditService.php';
 require_once __DIR__ . '/AutorisationService.php';
+require_once __DIR__ . '/ActiviteService.php';
 
 /**
  * Socle commun des services d'écriture.
@@ -350,5 +351,101 @@ abstract class ServiceBase
         );
 
         return $activiteId;
+    }
+
+    /**
+     * Recalcule le CA, la commission et l'écart d'une activité après la
+     * correction d'un ravitaillement ou d'un retour. Ne fait rien si
+     * l'activité n'est pas encore clôturée : le rapport lit alors les
+     * lignes à jour directement, rien n'est figé.
+     *
+     * Choix pris ici (à confirmer si besoin) : si l'écart redevient non
+     * nul après correction, le statut repasse à 'ecart_a_expliquer' même
+     * s'il avait déjà été résolu, car le montant n'est plus le même et
+     * mérite une nouvelle explication ; le motif de la correction sert
+     * alors de motif d'écart de départ.
+     */
+    protected function recalculerFinancesActivite(
+        int $activiteId,
+        ?int $siteId,
+        int $userId,
+        string $motif
+    ): void {
+        $activite = $this->fetchOne(
+            'SELECT statut FROM activites WHERE id = :id FOR UPDATE',
+            ['id' => $activiteId]
+        );
+
+        if ($activite === null || $activite['statut'] !== 'terminee') {
+            return;
+        }
+
+        $calcul = (new ActiviteService())->calculer($activiteId);
+        $nouveauCa = $calcul['ca'];
+
+        $commission = $this->fetchOne(
+            'SELECT id, taux FROM commissions WHERE activite_id = :id',
+            ['id' => $activiteId]
+        );
+        $controle = $this->fetchOne(
+            'SELECT id, montant_remis, ca_theorique, ecart, statut, motif_ecart FROM controles_financiers WHERE activite_id = :id',
+            ['id' => $activiteId]
+        );
+
+        if ($commission === null || $controle === null) {
+            return;
+        }
+
+        $nouvelleCommission = round($nouveauCa * (float) $commission['taux'] / 100, 2);
+
+        $stmt = $this->db->prepare(
+            'UPDATE commissions SET ca = :ca, montant = :montant WHERE id = :id'
+        );
+        $stmt->execute(['ca' => $nouveauCa, 'montant' => $nouvelleCommission, 'id' => $commission['id']]);
+
+        $nouvelEcart = round((float) $controle['montant_remis'] - $nouveauCa, 2);
+        $nouveauStatut = $nouvelEcart === 0.0 ? 'aucun_ecart' : 'ecart_a_expliquer';
+        $nouveauMotifEcart = $nouvelEcart === 0.0 ? null : $motif;
+
+        $stmt = $this->db->prepare(
+            "
+            UPDATE controles_financiers
+            SET ca_theorique = :ca,
+                ecart = :ecart,
+                statut = CAST(:statut AS controle_financier_statut),
+                motif_ecart = :motif_ecart,
+                updated_at = NOW()
+            WHERE id = :id
+            "
+        );
+        $stmt->execute([
+            'ca' => $nouveauCa,
+            'ecart' => $nouvelEcart,
+            'statut' => $nouveauStatut,
+            'motif_ecart' => $nouveauMotifEcart,
+            'id' => $controle['id'],
+        ]);
+
+        AuditService::enregistrer(
+            $this->db,
+            $userId,
+            'finances_activite_recalculees',
+            'activites',
+            $activiteId,
+            $siteId,
+            [
+                'commission_taux' => (float) $commission['taux'],
+                'ca_theorique' => (float) $controle['ca_theorique'],
+                'ecart' => (float) $controle['ecart'],
+                'statut' => $controle['statut'],
+            ],
+            [
+                'commission_montant' => $nouvelleCommission,
+                'ca_theorique' => $nouveauCa,
+                'ecart' => $nouvelEcart,
+                'statut' => $nouveauStatut,
+            ],
+            $motif
+        );
     }
 }

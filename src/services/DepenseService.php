@@ -197,4 +197,140 @@ class DepenseService extends ServiceBase
 
         return sprintf('%d.%02d', intdiv($centimes, 100), $centimes % 100);
     }
+    /**
+     * Corrige une dépense déjà enregistrée. Une dépense de site suit la
+     * même règle que les ravitaillements/retours : responsable de ce
+     * site tant que sa journée est ouverte, Russell partout. Une
+     * dépense globale (sans site) reste réservée à Russell, comme à la
+     * création — choix pris ici puisqu'une dépense globale n'appartient
+     * à aucune journée : à confirmer si besoin.
+     */
+    public function corriger(
+        int $depenseId,
+        string $libelle,
+        int|float|string $montant,
+        int $categorieId,
+        ?string $justificatif,
+        ?string $note,
+        int $userId,
+        string $motif
+    ): void {
+        $libelle = trim($libelle);
+
+        if ($libelle === '') {
+            throw new InvalidArgumentException('Le libellé de la dépense est obligatoire.');
+        }
+
+        if (mb_strlen($libelle) > 255) {
+            throw new InvalidArgumentException('Le libellé ne doit pas dépasser 255 caractères.');
+        }
+
+        $montantTexte = $this->normaliserMontant($montant);
+        $motif = trim($motif);
+
+        if ($motif === '') {
+            throw new InvalidArgumentException('Le motif de la correction est obligatoire.');
+        }
+
+        $this->transaction(function () use (
+            $depenseId,
+            $libelle,
+            $montantTexte,
+            $categorieId,
+            $justificatif,
+            $note,
+            $userId,
+            $motif
+        ): void {
+            $this->verifierUtilisateur($userId);
+
+            $depense = $this->fetchOne(
+                '
+                SELECT id, site_id, categorie_id, libelle, montant
+                FROM depenses
+                WHERE id = :id
+                FOR UPDATE
+                ',
+                ['id' => $depenseId]
+            );
+
+            if ($depense === null) {
+                throw new RuntimeException('Dépense introuvable.');
+            }
+
+            $siteId = $depense['site_id'] !== null ? (int) $depense['site_id'] : null;
+
+            if ($siteId === null) {
+                (new AutorisationService($this->db))->verifierSuperAdministrateur($userId);
+            } else {
+                $this->verifierAccesSite($userId, $siteId);
+
+                $journeeOuverte = $this->fetchOne(
+                    "SELECT id FROM journees WHERE site_id = :site_id AND statut = 'ouverte' LIMIT 1",
+                    ['site_id' => $siteId]
+                );
+
+                if ($journeeOuverte === null) {
+                    throw new RuntimeException(
+                        'Aucune journée ouverte sur ce site : demande à Russell '
+                        . 'de rouvrir la journée concernée avant de corriger.'
+                    );
+                }
+            }
+
+            $categorie = $this->fetchOne(
+                'SELECT id, nom, actif FROM categories_depenses WHERE id = :id',
+                ['id' => $categorieId]
+            );
+
+            if ($categorie === null) {
+                throw new RuntimeException('Catégorie de dépense introuvable.');
+            }
+
+            if (!(bool) $categorie['actif']) {
+                throw new RuntimeException("La catégorie {$categorie['nom']} est désactivée.");
+            }
+
+            $stmt = $this->db->prepare(
+                '
+                UPDATE depenses
+                SET categorie_id = :categorie_id,
+                    libelle = :libelle,
+                    montant = :montant,
+                    justificatif = :justificatif,
+                    note = :note,
+                    updated_at = NOW()
+                WHERE id = :id
+                '
+            );
+            $stmt->execute([
+                'categorie_id' => $categorieId,
+                'libelle' => $libelle,
+                'montant' => $montantTexte,
+                'justificatif' => $justificatif,
+                'note' => $note,
+                'id' => $depenseId,
+            ]);
+
+            AuditService::enregistrer(
+                $this->db,
+                $userId,
+                'depense_corrigee',
+                'depenses',
+                $depenseId,
+                $siteId,
+                [
+                    'categorie_id' => (int) $depense['categorie_id'],
+                    'libelle' => $depense['libelle'],
+                    'montant' => $depense['montant'],
+                ],
+                [
+                    'categorie_id' => $categorieId,
+                    'libelle' => $libelle,
+                    'montant' => $montantTexte,
+                ],
+                $motif
+            );
+        });
+    }
 }

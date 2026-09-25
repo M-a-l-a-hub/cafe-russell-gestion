@@ -116,4 +116,22 @@ final class FinancesControleur extends ControleurBase
 
         return new Resultat(201, $resultat);
     }
+    /** POST /api/depenses/{id}/correction {categorie_id, libelle, montant, justificatif?, note?, motif} */
+    public function corrigerDepense(Requete $req): array
+    {
+        $id = $req->parametreChemin('id');
+
+        (new DepenseService())->corriger(
+            $id,
+            $req->texte('libelle', 255),
+            $req->montant('montant'),
+            $req->entier('categorie_id'),
+            $req->texteOptionnel('justificatif'),
+            $req->texteOptionnel('note'),
+            $this->utilisateurId($req),
+            $req->texte('motif')
+        );
+
+        return ['depense_id' => $id, 'corrige' => true];
+    }
 }

@@ -438,4 +438,169 @@ class RavitaillementService extends ServiceBase
 
         return $ravitaillementId;
     }
+    /**
+     * Corrige un ravitaillement déjà enregistré : quantités mises à
+     * jour, prix et coûts d'origine conservés pour les produits déjà
+     * présents ; un nouveau produit prend le tarif en vigueur à la date
+     * du ravitaillement ; un produit absent de la correction est retiré.
+     * Recalcule la commission et l'écart si l'activité est déjà
+     * clôturée.
+     *
+     * @param array<int, array{produit_id: int, quantite: int}> $lignes
+     */
+    public function corriger(
+        int $ravitaillementId,
+        array $lignes,
+        int $userId,
+        string $motif
+    ): void {
+        $lignes = $this->preparerLignes($lignes);
+        $motif = trim($motif);
+
+        if ($motif === '') {
+            throw new InvalidArgumentException('Le motif de la correction est obligatoire.');
+        }
+
+        $this->transaction(function () use ($ravitaillementId, $lignes, $userId, $motif): void {
+            $this->verifierUtilisateur($userId);
+
+            $rav = $this->fetchOne(
+                "
+                SELECT
+                    r.id, r.activite_id,
+                    j.site_id, j.statut AS journee_statut, j.date_jour
+                FROM ravitaillements r
+                INNER JOIN activites a ON a.id = r.activite_id
+                INNER JOIN journees j ON j.id = a.journee_id
+                WHERE r.id = :id
+                FOR UPDATE OF r
+                ",
+                ['id' => $ravitaillementId]
+            );
+
+            if ($rav === null) {
+                throw new RuntimeException('Ravitaillement introuvable.');
+            }
+
+            if ($rav['journee_statut'] !== 'ouverte') {
+                throw new RuntimeException(
+                    'Cette journée est clôturée : demande à Russell de la '
+                    . 'rouvrir avant de corriger ce ravitaillement.'
+                );
+            }
+
+            $this->verifierAccesSite($userId, (int) $rav['site_id']);
+
+            $anciennes = $this->fetchAllRows(
+                '
+                SELECT produit_id, quantite, prix_unitaire, cout_unitaire
+                FROM ravitaillement_lignes
+                WHERE ravitaillement_id = :id
+                ',
+                ['id' => $ravitaillementId]
+            );
+
+            $date = (string) $rav['date_jour'];
+            $existantes = [];
+
+            foreach ($anciennes as $ligne) {
+                $existantes[(int) $ligne['produit_id']] = $ligne;
+            }
+
+            foreach ($lignes as $ligne) {
+                $produitId = $ligne['produit_id'];
+
+                if (isset($existantes[$produitId])) {
+                    $stmt = $this->db->prepare(
+                        '
+                        UPDATE ravitaillement_lignes
+                        SET quantite = :quantite
+                        WHERE ravitaillement_id = :rid AND produit_id = :pid
+                        '
+                    );
+                    $stmt->execute([
+                        'quantite' => $ligne['quantite'],
+                        'rid' => $ravitaillementId,
+                        'pid' => $produitId,
+                    ]);
+                    unset($existantes[$produitId]);
+                } else {
+                    [$prix, $cout] = $this->resoudrePrixEtCout($produitId, $date);
+
+                    $stmt = $this->db->prepare(
+                        '
+                        INSERT INTO ravitaillement_lignes (
+                            ravitaillement_id, produit_id, quantite, prix_unitaire, cout_unitaire
+                        )
+                        VALUES (:rid, :pid, :quantite, :prix, :cout)
+                        '
+                    );
+                    $stmt->execute([
+                        'rid' => $ravitaillementId,
+                        'pid' => $produitId,
+                        'quantite' => $ligne['quantite'],
+                        'prix' => $prix,
+                        'cout' => $cout,
+                    ]);
+                }
+            }
+
+            foreach (array_keys($existantes) as $produitId) {
+                $stmt = $this->db->prepare(
+                    'DELETE FROM ravitaillement_lignes WHERE ravitaillement_id = :rid AND produit_id = :pid'
+                );
+                $stmt->execute(['rid' => $ravitaillementId, 'pid' => $produitId]);
+            }
+
+            AuditService::enregistrer(
+                $this->db,
+                $userId,
+                'ravitaillement_corrige',
+                'ravitaillements',
+                $ravitaillementId,
+                (int) $rav['site_id'],
+                ['lignes' => array_values($anciennes)],
+                ['lignes' => $lignes],
+                $motif
+            );
+
+            $this->recalculerFinancesActivite(
+                (int) $rav['activite_id'],
+                (int) $rav['site_id'],
+                $userId,
+                $motif
+            );
+        });
+    }
+
+    /**
+     * @return array{0: string, 1: string} [prix, cout]
+     */
+    private function resoudrePrixEtCout(int $produitId, string $date): array
+    {
+        $prix = $this->fetchOne(
+            '
+            SELECT prix FROM produit_prix
+            WHERE produit_id = :id AND date_debut <= :d1 AND (date_fin IS NULL OR date_fin >= :d2)
+            LIMIT 1
+            ',
+            ['id' => $produitId, 'd1' => $date, 'd2' => $date]
+        );
+        $cout = $this->fetchOne(
+            '
+            SELECT cout_unitaire FROM produit_couts
+            WHERE produit_id = :id AND date_debut <= :d1 AND (date_fin IS NULL OR date_fin >= :d2)
+            LIMIT 1
+            ',
+            ['id' => $produitId, 'd1' => $date, 'd2' => $date]
+        );
+
+        if ($prix === null || $cout === null) {
+            throw new RuntimeException(
+                "Aucun prix ou coût valide au {$date} pour le produit {$produitId}."
+            );
+        }
+
+        return [$prix['prix'], $cout['cout_unitaire']];
+    }
 }

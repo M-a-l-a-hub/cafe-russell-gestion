@@ -21,8 +21,11 @@ $sacs = new SacsControleur();
 $vendeursCtrl = new VendeursControleur();
 $sitesCtrl = new SitesControleur();
 $responsablesCtrl = new ResponsablesControleur();
+$tableauDeBordCtrl = new TableauDeBordControleur();
 
 $russell = ['role' => 'super_admin'];
+
+$r->get('/api/tableau-de-bord', [$tableauDeBordCtrl, 'afficher'], $russell);
 
 // --- Session -----------------------------------------------------------
 $r->get('/api/sante', [$auth, 'sante'], ['public' => true, 'sans_session' => true]);

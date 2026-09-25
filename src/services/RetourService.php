@@ -186,4 +186,133 @@ class RetourService extends ServiceBase
             }
         );
     }
+    /**
+     * Corrige le retour d'une activité : remplace entièrement les
+     * quantités retournées (comme à la création, un produit absent de
+     * la correction équivaut à un retour à zéro pour ce produit).
+     * Recalcule la commission et l'écart si l'activité est déjà
+     * clôturée.
+     *
+     * @param array<int, array{produit_id: int, quantite: int}> $lignes
+     */
+    public function corriger(
+        int $retourId,
+        array $lignes,
+        int $userId,
+        string $motif
+    ): void {
+        $lignes = $this->normaliserLignes($lignes, true);
+        $motif = trim($motif);
+
+        if ($motif === '') {
+            throw new InvalidArgumentException('Le motif de la correction est obligatoire.');
+        }
+
+        $this->transaction(function () use ($retourId, $lignes, $userId, $motif): void {
+            $this->verifierUtilisateur($userId);
+
+            $retour = $this->fetchOne(
+                "
+                SELECT
+                    ret.id, ret.activite_id,
+                    j.site_id, j.statut AS journee_statut
+                FROM retours ret
+                INNER JOIN activites a ON a.id = ret.activite_id
+                INNER JOIN journees j ON j.id = a.journee_id
+                WHERE ret.id = :id
+                FOR UPDATE OF ret
+                ",
+                ['id' => $retourId]
+            );
+
+            if ($retour === null) {
+                throw new RuntimeException('Retour introuvable.');
+            }
+
+            if ($retour['journee_statut'] !== 'ouverte') {
+                throw new RuntimeException(
+                    'Cette journée est clôturée : demande à Russell de la '
+                    . 'rouvrir avant de corriger ce retour.'
+                );
+            }
+
+            $this->verifierAccesSite($userId, (int) $retour['site_id']);
+
+            $activiteId = (int) $retour['activite_id'];
+
+            $recues = [];
+            $rows = $this->fetchAllRows(
+                "
+                SELECT rl.produit_id, SUM(rl.quantite) AS recue
+                FROM ravitaillement_lignes rl
+                INNER JOIN ravitaillements r ON r.id = rl.ravitaillement_id
+                WHERE r.activite_id = :id
+                GROUP BY rl.produit_id
+                ",
+                ['id' => $activiteId]
+            );
+            foreach ($rows as $row) {
+                $recues[(int) $row['produit_id']] = (int) $row['recue'];
+            }
+
+            foreach ($lignes as $ligne) {
+                $produitId = $ligne['produit_id'];
+
+                if (!isset($recues[$produitId])) {
+                    throw new RuntimeException(
+                        "Le produit {$produitId} n’a jamais été ravitaillé pour cette activité."
+                    );
+                }
+
+                if ($ligne['quantite'] > $recues[$produitId]) {
+                    throw new RuntimeException(
+                        "Retour supérieur à la quantité reçue pour le produit "
+                        . "{$produitId} ({$ligne['quantite']} > {$recues[$produitId]})."
+                    );
+                }
+            }
+
+            $anciennes = $this->fetchAllRows(
+                'SELECT produit_id, quantite FROM retour_lignes WHERE retour_id = :id',
+                ['id' => $retourId]
+            );
+
+            $stmt = $this->db->prepare('DELETE FROM retour_lignes WHERE retour_id = :id');
+            $stmt->execute(['id' => $retourId]);
+
+            $stmtLigne = $this->db->prepare(
+                '
+                INSERT INTO retour_lignes (retour_id, produit_id, quantite)
+                VALUES (:retour_id, :produit_id, :quantite)
+                '
+            );
+
+            foreach ($lignes as $ligne) {
+                $stmtLigne->execute([
+                    'retour_id' => $retourId,
+                    'produit_id' => $ligne['produit_id'],
+                    'quantite' => $ligne['quantite'],
+                ]);
+            }
+
+            AuditService::enregistrer(
+                $this->db,
+                $userId,
+                'retour_corrige',
+                'retours',
+                $retourId,
+                (int) $retour['site_id'],
+                ['lignes' => $anciennes],
+                ['lignes' => $lignes],
+                $motif
+            );
+
+            $this->recalculerFinancesActivite(
+                $activiteId,
+                (int) $retour['site_id'],
+                $userId,
+                $motif
+            );
+        });
+    }
 }

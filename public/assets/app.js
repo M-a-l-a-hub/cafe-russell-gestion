@@ -14,6 +14,8 @@ const etat = {
   vendeurs: [],
   sacs: [],
   categoriesTransport: [],
+  categoriesDepenses: [],
+  depensesJour: [],
   journee: null,
   rapport: null,
 };
@@ -246,6 +248,8 @@ async function allerA(vue) {
   if (vue === 'anomalies') return chargerAnomalies();
   if (vue === 'vendeurs') return chargerVendeurs();
   if (vue === 'sacs') return chargerSacs();
+  if (vue === 'argent') return chargerArgent();
+  if (vue === 'tableau') return chargerTableauDeBord();
 }
 
 function afficherVue(id, html) {
@@ -286,12 +290,19 @@ async function chargerAccueil() {
         <h2>${estJourneeFermee ? 'Journée déjà clôturée' : 'Journée existante'}</h2>
         <p>${dateLisible(journeeExistante.date_jour + 'T00:00:00')} a déjà une journée enregistrée.</p>
         <button class="principal" id="btn-voir-rapport">Voir le rapport</button>
+        ${estJourneeFermee && etat.utilisateur.role === 'super_admin' ? `
+          <button class="secondaire" style="margin-top:8px" data-rouvrir="${journeeExistante.id}">Rouvrir cette journée</button>
+        ` : ''}
       </div>
     `);
 
     document.getElementById('btn-voir-rapport').addEventListener('click', () => afficherJournee());
+    const btnRouvrir = document.querySelector('[data-rouvrir]');
+    if (btnRouvrir) btnRouvrir.addEventListener('click', () => rouvrirJournee(journeeExistante.id));
     return;
   }
+
+  const journeesRecentes = journees.filter((j) => j.statut === 'cloturee').slice(0, 5);
 
   afficherVue('accueil', `
     <div class="carte">
@@ -299,8 +310,34 @@ async function chargerAccueil() {
       <p>Ouvre la journée du ${dateLisible(dateAujourdhui + 'T00:00:00')} pour commencer à enregistrer les ventes.</p>
       <button class="principal" id="btn-ouvrir-journee">Ouvrir la journée</button>
     </div>
+    ${journeesRecentes.length && etat.utilisateur.role === 'super_admin' ? `
+      <h2>Journées récentes clôturées</h2>
+      ${journeesRecentes.map((j) => `
+        <div class="carte">
+          <div class="ligne"><span>${dateLisible(j.date_jour + 'T00:00:00')}</span>
+            <button class="secondaire" data-rouvrir="${j.id}">Rouvrir</button>
+          </div>
+        </div>
+      `).join('')}
+    ` : ''}
   `);
   document.getElementById('btn-ouvrir-journee').addEventListener('click', ouvrirJourneeAujourdhui);
+  document.querySelectorAll('[data-rouvrir]').forEach((b) => {
+    b.addEventListener('click', () => rouvrirJournee(Number(b.dataset.rouvrir)));
+  });
+}
+
+async function rouvrirJournee(journeeId) {
+  const raison = prompt('Raison de la réouverture :');
+  if (!raison) return;
+
+  try {
+    await api(`/api/journees/${journeeId}/reouverture`, { method: 'POST', corps: { raison } });
+    etat.journee = { id: journeeId, statut: 'ouverte' };
+    await afficherJournee();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 async function ouvrirJourneeAujourdhui() {
@@ -339,10 +376,18 @@ async function afficherJournee() {
       </div>
       <div class="ligne"><span>Ventes</span><span class="montant">${fc(a.ca)}</span></div>
       <div class="ligne"><span>Bénéfice (${a.beneficiaire_benefice === 'russell' ? 'Russell' : 'entreprise'})</span><span class="montant">${fc(a.benefice)}</span></div>
-      ${a.activite.statut !== 'terminee' ? `
+      ${rapport.journee.statut === 'ouverte' ? `
         <div class="barre-actions">
-          <button class="secondaire" data-ravitailler="${a.activite.id}">Ravitailler</button>
-          <button class="principal" data-cloturer="${a.activite.id}">Retour et clôture</button>
+          ${a.activite.statut !== 'terminee' ? `
+            <button class="secondaire" data-ravitailler="${a.activite.id}">Ravitailler</button>
+            <button class="principal" data-cloturer="${a.activite.id}">Retour et clôture</button>
+          ` : ''}
+        </div>
+        <div class="barre-actions" style="margin-top:8px">
+          <button class="secondaire" style="flex:1" data-corriger="${a.activite.id}">Corriger</button>
+          ${a.activite.statut !== 'terminee' ? `
+            <button class="secondaire" style="flex:1;color:var(--rouge)" data-annuler="${a.activite.id}">Annuler</button>
+          ` : ''}
         </div>
       ` : ''}
     </div>
@@ -351,6 +396,7 @@ async function afficherJournee() {
   const html = `
     <div class="carte">
       <h2>${dateLisible(rapport.journee.date_jour + 'T00:00:00')}</h2>
+      <div class="ligne"><span>Nombre des vendeurs</span><span class="montant">${(rapport.vendeurs)}</span></div>
       <div class="ligne"><span>Ventes</span><span class="montant">${fc(rapport.ventes)}</span></div>
       <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(rapport.benefice_entreprise)}</span></div>
       <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(rapport.benefice_russell)}</span></div>
@@ -372,6 +418,24 @@ async function afficherJournee() {
   document.querySelectorAll('[data-cloturer]').forEach((b) => {
     b.addEventListener('click', () => ouvrirModaleCloture(Number(b.dataset.cloturer)));
   });
+  document.querySelectorAll('[data-corriger]').forEach((b) => {
+    b.addEventListener('click', () => ouvrirModaleCorrection(Number(b.dataset.corriger)));
+  });
+  document.querySelectorAll('[data-annuler]').forEach((b) => {
+    b.addEventListener('click', () => annulerActivite(Number(b.dataset.annuler)));
+  });
+}
+
+async function annulerActivite(activiteId) {
+  const motif = prompt('Motif de l\'annulation :');
+  if (!motif) return;
+
+  try {
+    await api(`/api/activites/${activiteId}/annulation`, { method: 'POST', corps: { motif } });
+    await afficherJournee();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -557,6 +621,105 @@ async function ouvrirModaleMontantRemis(activiteId) {
       document.getElementById('erreur-cloture').hidden = false;
     }
   });
+}
+
+/* ---------------------------------------------------------------------
+ * Correction d'un ravitaillement ou d'un retour déjà enregistrés
+ * ------------------------------------------------------------------- */
+
+async function ouvrirModaleCorrection(activiteId) {
+  ouvrirModale('Corriger cette activité', '<p class="chargement">Chargement…</p>');
+
+  const details = await api(`/api/activites/${activiteId}/details-correction`);
+
+  const blocLignes = (prefixe, lignesExistantes) => {
+    const quantites = {};
+    lignesExistantes.forEach((l) => { quantites[l.produit_id] = l.quantite; });
+
+    return etat.produits.map((p) => `
+      <div class="ligne-produit">
+        <span>${p.nom}</span>
+        <input type="number" min="0" step="1" value="${quantites[p.id] ?? 0}" data-${prefixe}="${p.id}">
+      </div>
+    `).join('');
+  };
+
+  const blocRavitaillement = (rav) => `
+    <div class="carte" style="box-shadow:none;border:1px solid var(--creme-2)">
+      <h3 style="font-size:1rem">Ravitaillement du ${new Date(rav.date_heure).toLocaleString('fr-FR')}</h3>
+      <form data-form-ravitaillement="${rav.id}">
+        <div class="grille-produits">${blocLignes(`rav${rav.id}`, rav.lignes)}</div>
+        <div class="champ">
+          <label>Motif de la correction</label>
+          <input type="text" data-motif-rav="${rav.id}" maxlength="255" required>
+        </div>
+        <p class="message-erreur" data-erreur-rav="${rav.id}" hidden></p>
+        <button class="secondaire" type="submit">Corriger ce ravitaillement</button>
+      </form>
+    </div>
+  `;
+
+  const blocRetour = details.retour ? `
+    <div class="carte" style="box-shadow:none;border:1px solid var(--creme-2)">
+      <h3 style="font-size:1rem">Retour</h3>
+      <form id="form-correction-retour">
+        <div class="grille-produits">${blocLignes('retour', details.retour.lignes)}</div>
+        <div class="champ">
+          <label>Motif de la correction</label>
+          <input type="text" id="motif-retour" maxlength="255" required>
+        </div>
+        <p class="message-erreur" id="erreur-retour-correction" hidden></p>
+        <button class="secondaire" type="submit">Corriger le retour</button>
+      </form>
+    </div>
+  ` : '<p style="color:var(--brun-500);font-size:.9rem">Pas encore de retour pour cette activité.</p>';
+
+  ouvrirModale('Corriger cette activité', `
+    ${details.ravitaillements.map(blocRavitaillement).join('')}
+    ${blocRetour}
+  `);
+
+  details.ravitaillements.forEach((rav) => {
+    document.querySelector(`[data-form-ravitaillement="${rav.id}"]`).addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const lignes = etat.produits.map((p) => ({
+        produit_id: p.id,
+        quantite: Number(document.querySelector(`[data-rav${rav.id}="${p.id}"]`).value),
+      })).filter((l) => l.quantite > 0);
+      const motif = document.querySelector(`[data-motif-rav="${rav.id}"]`).value;
+
+      try {
+        await api(`/api/ravitaillements/${rav.id}/correction`, { method: 'POST', corps: { lignes, motif } });
+        fermerModale();
+        await afficherJournee();
+      } catch (e) {
+        const erreur = document.querySelector(`[data-erreur-rav="${rav.id}"]`);
+        erreur.textContent = e.message;
+        erreur.hidden = false;
+      }
+    });
+  });
+
+  const formRetour = document.getElementById('form-correction-retour');
+  if (formRetour) {
+    formRetour.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const lignes = etat.produits.map((p) => ({
+        produit_id: p.id,
+        quantite: Number(document.querySelector(`[data-retour="${p.id}"]`).value),
+      }));
+      const motif = document.getElementById('motif-retour').value;
+
+      try {
+        await api(`/api/retours/${details.retour.id}/correction`, { method: 'POST', corps: { lignes, motif } });
+        fermerModale();
+        await afficherJournee();
+      } catch (e) {
+        document.getElementById('erreur-retour-correction').textContent = e.message;
+        document.getElementById('erreur-retour-correction').hidden = false;
+      }
+    });
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -1114,6 +1277,343 @@ function ouvrirModaleDeplacerSac(sacId) {
       document.getElementById('erreur-ds').textContent = e.message;
       document.getElementById('erreur-ds').hidden = false;
     }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * Argent : solde d'un vendeur (retrait, paiement de solde) et dépenses
+ * du site.
+ * ------------------------------------------------------------------- */
+
+async function chargerArgent() {
+  afficherVue('argent', '<p class="chargement">Chargement…</p>');
+
+  if (etat.categoriesDepenses.length === 0) {
+    etat.categoriesDepenses = await api('/api/categories-depenses');
+  }
+
+  const date = aujourdhui();
+  const depenses = await api(`/api/sites/${etat.siteId}/depenses?date=${date}`);
+
+  const html = `
+    <div class="carte">
+      <h2>Solde d'un vendeur</h2>
+      <div class="champ">
+        <label>Vendeur</label>
+        <select id="argent-vendeur">
+          <option value="">— choisir —</option>
+          ${etat.vendeurs.map((v) => `<option value="${v.id}">${v.prenom ? v.prenom + ' ' + v.nom : v.nom}</option>`).join('')}
+        </select>
+      </div>
+      <div id="argent-solde"></div>
+    </div>
+
+    <h2>Dépenses du jour</h2>
+    <div class="carte">
+      <button class="principal" id="btn-nouvelle-depense" style="margin-bottom:14px">+ Nouvelle dépense</button>
+      ${depenses.length === 0 ? '<p class="liste-vide">Aucune dépense aujourd\'hui.</p>' : depenses.map((d) => `
+        <div class="ligne">
+          <span>${d.categorie} — ${d.libelle}
+            <button class="secondaire" style="padding:2px 8px;margin-left:6px;font-size:.78rem" data-corriger-depense="${d.id}">corriger</button>
+          </span>
+          <span class="montant">${fc(d.montant)}</span>
+        </div>
+      `).join('')}
+      ${depenses.length ? `<div class="ligne"><span>Total</span><span class="montant">${fc(depenses.reduce((s, d) => s + Number(d.montant), 0))}</span></div>` : ''}
+    </div>
+  `;
+
+  afficherVue('argent', html);
+
+  etat.depensesJour = depenses;
+
+  document.getElementById('argent-vendeur').addEventListener('change', afficherSoldeVendeur);
+  document.getElementById('btn-nouvelle-depense').addEventListener('click', ouvrirModaleNouvelleDepense);
+  document.querySelectorAll('[data-corriger-depense]').forEach((b) => {
+    b.addEventListener('click', () => {
+      const depense = etat.depensesJour.find((d) => d.id === Number(b.dataset.corrigerDepense));
+      ouvrirModaleCorrectionDepense(depense);
+    });
+  });
+}
+
+async function afficherSoldeVendeur() {
+  const select = document.getElementById('argent-vendeur');
+  const zone = document.getElementById('argent-solde');
+  const vendeurId = Number(select.value);
+
+  if (!vendeurId) {
+    zone.innerHTML = '';
+    return;
+  }
+
+  zone.innerHTML = '<p class="chargement">Chargement…</p>';
+
+  try {
+    const solde = await api(`/api/vendeurs/${vendeurId}/solde?site_id=${etat.siteId}`);
+
+    zone.innerHTML = `
+      <div class="ligne"><span>Commissions</span><span class="montant">${fc(solde.commissions)}</span></div>
+      <div class="ligne"><span>Retraits</span><span class="montant">- ${fc(solde.retraits)}</span></div>
+      <div class="ligne"><span>Soldes déjà payés</span><span class="montant">- ${fc(solde.paiements)}</span></div>
+      <div class="ligne"><span><strong>Solde disponible</strong></span><span class="montant"><strong>${fc(solde.solde)}</strong></span></div>
+      <div class="barre-actions">
+        <button class="secondaire" id="btn-retrait">Retrait</button>
+        <button class="principal" id="btn-paiement-solde">Payer le solde</button>
+      </div>
+    `;
+
+    document.getElementById('btn-retrait').addEventListener('click', () => ouvrirModaleRetrait(vendeurId));
+    document.getElementById('btn-paiement-solde').addEventListener('click', () => ouvrirModalePaiementSolde(vendeurId));
+  } catch (e) {
+    zone.innerHTML = `<p class="message-erreur">${e.message}</p>`;
+  }
+}
+
+function ouvrirModaleRetrait(vendeurId) {
+  ouvrirModale('Retrait', `
+    <form id="form-retrait">
+      <div class="champ">
+        <label>Montant (FC)</label>
+        <input type="number" min="1" step="1" id="retrait-montant" required>
+      </div>
+      <div class="champ">
+        <label>Motif (optionnel)</label>
+        <input type="text" id="retrait-motif" maxlength="255">
+      </div>
+      <p class="message-erreur" id="erreur-retrait" hidden></p>
+      <button class="principal" type="submit">Enregistrer le retrait</button>
+    </form>
+  `);
+
+  document.getElementById('form-retrait').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+
+    try {
+      await api('/api/retraits', {
+        method: 'POST',
+        corps: {
+          vendeur_id: vendeurId,
+          site_id: etat.siteId,
+          montant: Number(document.getElementById('retrait-montant').value),
+          motif: document.getElementById('retrait-motif').value.trim() || null,
+        },
+      });
+      fermerModale();
+      await afficherSoldeVendeur();
+    } catch (e) {
+      document.getElementById('erreur-retrait').textContent = e.message;
+      document.getElementById('erreur-retrait').hidden = false;
+    }
+  });
+}
+
+function ouvrirModalePaiementSolde(vendeurId) {
+  ouvrirModale('Payer le solde', `
+    <form id="form-paiement-solde">
+      <div class="champ">
+        <label>Montant (FC)</label>
+        <input type="number" min="1" step="1" id="paiement-montant" required>
+      </div>
+      <div class="champ">
+        <label>Note (optionnel)</label>
+        <input type="text" id="paiement-note" maxlength="255">
+      </div>
+      <p class="message-erreur" id="erreur-paiement" hidden></p>
+      <button class="principal" type="submit">Enregistrer le paiement</button>
+    </form>
+  `);
+
+  document.getElementById('form-paiement-solde').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+
+    try {
+      await api('/api/paiements-soldes', {
+        method: 'POST',
+        corps: {
+          vendeur_id: vendeurId,
+          site_id: etat.siteId,
+          montant: Number(document.getElementById('paiement-montant').value),
+          note: document.getElementById('paiement-note').value.trim() || null,
+        },
+      });
+      fermerModale();
+      await afficherSoldeVendeur();
+    } catch (e) {
+      document.getElementById('erreur-paiement').textContent = e.message;
+      document.getElementById('erreur-paiement').hidden = false;
+    }
+  });
+}
+
+function ouvrirModaleNouvelleDepense() {
+  ouvrirModale('Nouvelle dépense', `
+    <form id="form-depense">
+      <div class="champ">
+        <label>Catégorie</label>
+        <select id="dep-categorie">
+          ${etat.categoriesDepenses.map((c) => `<option value="${c.id}">${c.nom}</option>`).join('')}
+        </select>
+      </div>
+      <div class="champ">
+        <label>Libellé</label>
+        <input type="text" id="dep-libelle" maxlength="255" required>
+      </div>
+      <div class="champ">
+        <label>Montant (FC)</label>
+        <input type="number" min="1" step="1" id="dep-montant" required>
+      </div>
+      <div class="champ">
+        <label>Note (optionnel)</label>
+        <input type="text" id="dep-note" maxlength="255">
+      </div>
+      <p class="message-erreur" id="erreur-dep" hidden></p>
+      <button class="principal" type="submit">Enregistrer la dépense</button>
+    </form>
+  `);
+
+  document.getElementById('form-depense').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+
+    try {
+      await api('/api/depenses', {
+        method: 'POST',
+        corps: {
+          categorie_id: Number(document.getElementById('dep-categorie').value),
+          libelle: document.getElementById('dep-libelle').value.trim(),
+          montant: Number(document.getElementById('dep-montant').value),
+          site_id: etat.siteId,
+          note: document.getElementById('dep-note').value.trim() || null,
+        },
+      });
+      fermerModale();
+      await chargerArgent();
+    } catch (e) {
+      document.getElementById('erreur-dep').textContent = e.message;
+      document.getElementById('erreur-dep').hidden = false;
+    }
+  });
+}
+
+function ouvrirModaleCorrectionDepense(depense) {
+  ouvrirModale('Corriger la dépense', `
+    <form id="form-correction-depense">
+      <div class="champ">
+        <label>Catégorie</label>
+        <select id="cdep-categorie">
+          ${etat.categoriesDepenses.map((c) => `<option value="${c.id}" ${c.id === depense.categorie_id ? 'selected' : ''}>${c.nom}</option>`).join('')}
+        </select>
+      </div>
+      <div class="champ">
+        <label>Libellé</label>
+        <input type="text" id="cdep-libelle" maxlength="255" value="${depense.libelle}" required>
+      </div>
+      <div class="champ">
+        <label>Montant (FC)</label>
+        <input type="number" min="1" step="1" id="cdep-montant" value="${Math.round(Number(depense.montant))}" required>
+      </div>
+      <div class="champ">
+        <label>Note (optionnel)</label>
+        <input type="text" id="cdep-note" maxlength="255" value="${depense.note ?? ''}">
+      </div>
+      <div class="champ">
+        <label>Motif de la correction</label>
+        <input type="text" id="cdep-motif" maxlength="255" required>
+      </div>
+      <p class="message-erreur" id="erreur-cdep" hidden></p>
+      <button class="principal" type="submit">Corriger la dépense</button>
+    </form>
+  `);
+
+  document.getElementById('form-correction-depense').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+
+    try {
+      await api(`/api/depenses/${depense.id}/correction`, {
+        method: 'POST',
+        corps: {
+          categorie_id: Number(document.getElementById('cdep-categorie').value),
+          libelle: document.getElementById('cdep-libelle').value.trim(),
+          montant: Number(document.getElementById('cdep-montant').value),
+          justificatif: depense.justificatif || null,
+          note: document.getElementById('cdep-note').value.trim() || null,
+          motif: document.getElementById('cdep-motif').value.trim(),
+        },
+      });
+      fermerModale();
+      await chargerArgent();
+    } catch (e) {
+      document.getElementById('erreur-cdep').textContent = e.message;
+      document.getElementById('erreur-cdep').hidden = false;
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * Tableau de bord (Russell) : vue multi-sites
+ * ------------------------------------------------------------------- */
+
+async function chargerTableauDeBord(date = null) {
+  afficherVue('tableau', '<p class="chargement">Chargement…</p>');
+
+  const dateChoisie = date || aujourdhui();
+  const donnees = await api(`/api/tableau-de-bord?date=${dateChoisie}`);
+
+  const carteSite = (entree) => {
+    const j = entree.journee;
+    const statut = j ? (j.statut === 'ouverte' ? 'ouverte' : 'cloturee') : null;
+    const libelleStatut = j ? (j.statut === 'ouverte' ? 'ouverte' : 'clôturée') : 'aucune journée';
+
+    return `
+      <div class="carte" data-site-carte="${entree.site.id}" style="cursor:pointer">
+        <div class="carte-titre">
+          <strong>${entree.site.nom}</strong>
+          <span class="etiquette ${statut ?? ''}">${libelleStatut}</span>
+        </div>
+        <div class="ligne"><span>Nombre des vendeurs</span><span class="montant">${(rapport.vendeurs)}</span></div>
+        <div class="ligne"><span>Ventes</span><span class="montant">${fc(entree.ventes)}</span></div>
+        <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(entree.benefice_entreprise)}</span></div>
+        <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(entree.benefice_russell)}</span></div>
+        ${entree.ecarts_en_attente || entree.anomalies_en_attente ? `
+          <div class="ligne">
+            <span>À traiter</span>
+            <span>
+              ${entree.ecarts_en_attente ? `<span class="etiquette ecart">${entree.ecarts_en_attente} écart${entree.ecarts_en_attente > 1 ? 's' : ''}</span>` : ''}
+              ${entree.anomalies_en_attente ? `<span class="etiquette ecart">${entree.anomalies_en_attente} anomalie${entree.anomalies_en_attente > 1 ? 's' : ''}</span>` : ''}
+            </span>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  };
+
+  afficherVue('tableau', `
+    <div class="carte">
+      <div class="champ" style="margin-bottom:0">
+        <label>Date</label>
+        <input type="date" id="tableau-date" value="${dateChoisie}">
+      </div>
+    </div>
+    <div class="carte">
+      <h2>Tous sites — ${dateLisible(dateChoisie + 'T00:00:00')}</h2>
+      <div class="ligne"><span>Ventes</span><span class="montant">${fc(donnees.totaux.ventes)}</span></div>
+      <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(donnees.totaux.benefice_entreprise)}</span></div>
+      <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(donnees.totaux.benefice_russell)}</span></div>
+      <div class="ligne"><span>Dépenses</span><span class="montant">${fc(donnees.totaux.depenses_site)}</span></div>
+    </div>
+    ${donnees.sites.map(carteSite).join('')}
+  `);
+
+  document.getElementById('tableau-date').addEventListener('change', (ev) => {
+    chargerTableauDeBord(ev.target.value);
+  });
+
+  document.querySelectorAll('[data-site-carte]').forEach((carte) => {
+    carte.addEventListener('click', () => {
+      etat.siteId = Number(carte.dataset.siteCarte);
+      document.getElementById('selecteur-site').value = String(etat.siteId);
+      allerA('accueil');
+    });
   });
 }
 

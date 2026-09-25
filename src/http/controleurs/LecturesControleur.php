@@ -213,6 +213,7 @@ final class LecturesControleur extends ControleurBase
             "
             SELECT
                 d.id,
+                d.categorie_id,
                 d.libelle,
                 d.montant,
                 d.date_depense,
@@ -387,5 +388,74 @@ final class LecturesControleur extends ControleurBase
         }
 
         return $this->restrictionSites($req, $colonneSite);
+    }
+    /**
+     * GET /api/activites/{id}/details-correction
+     * Ravitaillements (chacun avec ses lignes) et retour (s'il existe)
+     * d'une activité, pour préremplir l'écran de correction.
+     */
+    public function detailsCorrection(Requete $req): array
+    {
+        $id = $req->parametreChemin('id');
+
+        $ligne = $this->uneLigne(
+            '
+            SELECT j.site_id
+            FROM activites a
+            INNER JOIN journees j ON j.id = a.journee_id
+            WHERE a.id = :id
+            ',
+            ['id' => $id]
+        );
+
+        if ($ligne === null) {
+            throw new HttpException(404, 'introuvable', 'Activité introuvable.');
+        }
+
+        $this->verifierSite($req, (int) $ligne['site_id']);
+
+        $ravitaillements = $this->lignes(
+            '
+            SELECT id, date_heure, note
+            FROM ravitaillements
+            WHERE activite_id = :id
+            ORDER BY date_heure
+            ',
+            ['id' => $id]
+        );
+
+        foreach ($ravitaillements as &$rav) {
+            $rav['lignes'] = $this->lignes(
+                '
+                SELECT rl.produit_id, p.nom AS produit_nom, rl.quantite
+                FROM ravitaillement_lignes rl
+                INNER JOIN produits p ON p.id = rl.produit_id
+                WHERE rl.ravitaillement_id = :id
+                ORDER BY p.nom
+                ',
+                ['id' => $rav['id']]
+            );
+        }
+        unset($rav);
+
+        $retour = $this->uneLigne(
+            'SELECT id, date_heure, note FROM retours WHERE activite_id = :id',
+            ['id' => $id]
+        );
+
+        if ($retour !== null) {
+            $retour['lignes'] = $this->lignes(
+                '
+                SELECT rl.produit_id, p.nom AS produit_nom, rl.quantite
+                FROM retour_lignes rl
+                INNER JOIN produits p ON p.id = rl.produit_id
+                WHERE rl.retour_id = :id
+                ORDER BY p.nom
+                ',
+                ['id' => $retour['id']]
+            );
+        }
+
+        return ['ravitaillements' => $ravitaillements, 'retour' => $retour];
     }
 }
