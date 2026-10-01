@@ -261,8 +261,9 @@ final class Application
             $e->getLine()
         );
 
-        if (@file_put_contents($dossier . '/app.log', $ligne, FILE_APPEND | LOCK_EX) === false) {
-            error_log(trim($ligne));
-        }
+        @file_put_contents($dossier . '/app.log', $ligne, FILE_APPEND | LOCK_EX);
+
+        // Toujours aussi vers stderr : c'est ce qu'affichent les logs Render.
+        error_log(trim($ligne));
     }
 }
