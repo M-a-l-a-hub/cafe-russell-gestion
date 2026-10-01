@@ -45,7 +45,7 @@ function getDatabaseConnection(): PDO
 
     if (
         $parts === false ||
-        !isset($parts['host'], $parts['port'], $parts['path'])
+        !isset($parts['host'], $parts['path'])
     ) {
         throw new RuntimeException(
             'DATABASE_URL est invalide.'
@@ -53,7 +53,9 @@ function getDatabaseConnection(): PDO
     }
 
     $host = $parts['host'];
-    $port = $parts['port'];
+    $port = $parts['port'] ?? 5432;
+    parse_str($parts['query'] ?? '', $optionsUrl);
+    $sslmode = $optionsUrl['sslmode'] ?? 'prefer';
     $dbname = ltrim($parts['path'], '/');
 
     $user = isset($parts['user'])
@@ -65,10 +67,11 @@ function getDatabaseConnection(): PDO
         : '';
 
     $dsn = sprintf(
-        'pgsql:host=%s;port=%s;dbname=%s',
+        'pgsql:host=%s;port=%s;dbname=%s;sslmode=%s',
         $host,
         $port,
-        $dbname
+        $dbname,
+        $sslmode
     );
 
     $connexion = new PDO(

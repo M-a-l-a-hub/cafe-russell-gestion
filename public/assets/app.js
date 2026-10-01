@@ -5,6 +5,15 @@
  * retour, clôture, écarts). Vanilla JS, sans dépendance externe.
  * ===================================================================== */
 
+function esc(valeur) {
+  return String(valeur ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
 const etat = {
   utilisateur: null,
   csrf: null,
@@ -25,14 +34,25 @@ const etat = {
  * ------------------------------------------------------------------- */
 
 async function api(chemin, options = {}) {
+  const methode = options.method || 'GET';
+  const enregistrable = HorsLigne.estEnregistrable(methode, chemin);
+  const cle = enregistrable ? HorsLigne.nouvelleCle() : null;
+
   const config = {
-    method: options.method || 'GET',
+    method: methode,
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
   };
 
   if (options.method && options.method !== 'GET' && etat.csrf) {
     config.headers['X-CSRF-Token'] = etat.csrf;
+  }
+
+  if (cle) {
+    config.headers['Idempotency-Key'] = cle;
+    // Réseau lent ou instable : on met en file plutôt que d'attendre sans fin.
+    // Le serveur ignore un rejeu de la même clé, donc pas de doublon.
+    config.signal = AbortSignal.timeout(20000);
   }
 
   if (options.corps) {
@@ -44,6 +64,17 @@ async function api(chemin, options = {}) {
   try {
     reponse = await fetch(chemin, config);
   } catch {
+    if (methode === 'GET') {
+      const enCache = await HorsLigne.lireCache(chemin);
+      if (enCache) return enCache.donnees;
+    }
+
+    if (enregistrable) {
+      await HorsLigne.ajouter({ cle, chemin, corps: options.corps });
+      HorsLigne.notifier('Enregistré hors ligne. Sera envoyé dès le retour du réseau.');
+      return { en_attente: true, cle };
+    }
+
     throw new ErreurApi('reseau', "Impossible de joindre le serveur. Vérifie ta connexion.");
   }
 
@@ -57,6 +88,10 @@ async function api(chemin, options = {}) {
 
   if (!donnees.ok) {
     throw new ErreurApi(donnees.erreur.code, donnees.erreur.message, reponse.status);
+  }
+
+  if (methode === 'GET') {
+    HorsLigne.mettreEnCache(chemin, donnees.donnees);
   }
 
   return donnees.donnees;
@@ -132,6 +167,7 @@ formConnexion.addEventListener('submit', async (ev) => {
 
 document.getElementById('bouton-deconnexion').addEventListener('click', async () => {
   try { await api('/api/logout', { method: 'POST' }); } catch { /* on quitte quand même */ }
+  await HorsLigne.viderCache();
   window.location.reload();
 });
 
@@ -175,7 +211,7 @@ async function demarrerApp() {
     `${etat.utilisateur.prenom} ${etat.utilisateur.nom}`;
 
   const selecteur = document.getElementById('selecteur-site');
-  selecteur.innerHTML = sites.map((s) => `<option value="${s.id}">${s.nom}</option>`).join('');
+  selecteur.innerHTML = sites.map((s) => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
   selecteur.hidden = sites.length <= 1 && etat.utilisateur.role !== 'super_admin';
 
   if (sites.length === 0) {
@@ -225,6 +261,15 @@ async function demarrerApp() {
     actionResponsable.textContent = '+ Responsable';
     actionResponsable.addEventListener('click', ouvrirModaleNouveauResponsable);
     gestionSites.insertAdjacentElement('afterend', actionResponsable);
+
+    const boutonCouts = document.createElement('button');
+    boutonCouts.type = 'button';
+    boutonCouts.className = 'secondaire';
+    boutonCouts.dataset.roleCouts = 'true';
+    boutonCouts.style.marginLeft = '8px';
+    boutonCouts.textContent = 'Coûts des tasses';
+    boutonCouts.addEventListener('click', ouvrirModaleCouts);
+    actionResponsable.insertAdjacentElement('afterend', boutonCouts);
   }
 
   document.querySelectorAll('nav.bas button[data-vue]').forEach((bouton) => {
@@ -233,6 +278,16 @@ async function demarrerApp() {
 
   if (etat.utilisateur.role !== 'super_admin') {
     document.querySelectorAll('[data-russell-seulement]').forEach((el) => el.remove());
+  }
+
+  HorsLigne.demarrer();
+
+  if (!etat.ecouteSynchro) {
+    etat.ecouteSynchro = true;
+    document.addEventListener('horsligne:synchronise', () => {
+      const vueActive = document.querySelector('nav.bas button[data-vue].actif');
+      allerA(vueActive ? vueActive.dataset.vue : 'accueil');
+    });
   }
 
   await allerA('accueil');
@@ -366,9 +421,9 @@ async function afficherJournee() {
     <div class="carte">
       <div class="carte-titre">
         <div>
-          <strong>${a.activite.vendeur_prenom} ${a.activite.vendeur_nom}</strong><br>
-          <span class="etiquette">${a.activite.periode}</span>
-          <span class="etiquette">sac ${a.activite.sac_numero}</span>
+          <strong>${esc(a.activite.vendeur_prenom)} ${esc(a.activite.vendeur_nom)}</strong><br>
+          <span class="etiquette">${esc(a.activite.periode)}</span>
+          <span class="etiquette">sac ${esc(a.activite.sac_numero)}</span>
         </div>
         <span class="etiquette ${a.activite.statut === 'terminee' ? 'cloturee' : 'ouverte'}">
           ${a.activite.statut === 'terminee' ? 'clôturée' : 'en cours'}
@@ -482,11 +537,11 @@ async function ouvrirModaleRavitaillement(activiteId = null) {
   const optionsVendeurs = !activiteId
     ? `<div class="champ">
         <label>Vendeur</label>
-        <select id="rav-vendeur">${etat.vendeurs.map((v) => `<option value="${v.id}">${v.prenom} ${v.nom}</option>`).join('')}</select>
+        <select id="rav-vendeur">${etat.vendeurs.map((v) => `<option value="${v.id}">${esc(v.prenom)} ${esc(v.nom)}</option>`).join('')}</select>
       </div>
       <div class="champ">
         <label>Sac</label>
-        <select id="rav-sac">${sacs.filter((s) => s.statut === 'libre').map((s) => `<option value="${s.id}">${s.numero} (${s.categorie})</option>`).join('')}</select>
+        <select id="rav-sac">${sacs.filter((s) => s.statut === 'libre').map((s) => `<option value="${s.id}">${esc(s.numero)} (${esc(s.categorie)})</option>`).join('')}</select>
       </div>
       <div class="champ">
         <label>Période</label>
@@ -504,7 +559,7 @@ async function ouvrirModaleRavitaillement(activiteId = null) {
       <div class="grille-produits">
         ${etat.produits.map((p) => `
           <div class="ligne-produit">
-            <span>${p.nom}</span>
+            <span>${esc(p.nom)}</span>
             <input type="number" min="0" step="1" value="0" data-produit="${p.id}">
           </div>
         `).join('')}
@@ -560,7 +615,7 @@ async function ouvrirModaleCloture(activiteId) {
       <div class="grille-produits">
         ${etat.produits.map((p) => `
           <div class="ligne-produit">
-            <span>${p.nom}</span>
+            <span>${esc(p.nom)}</span>
             <input type="number" min="0" step="1" value="0" data-retour="${p.id}">
           </div>
         `).join('')}
@@ -576,7 +631,14 @@ async function ouvrirModaleCloture(activiteId) {
       .map((el) => ({ produit_id: Number(el.dataset.retour), quantite: Number(el.value) }));
 
     try {
-      await api(`/api/activites/${activiteId}/retours`, { method: 'POST', corps: { lignes } });
+      const retour = await api(`/api/activites/${activiteId}/retours`, { method: 'POST', corps: { lignes } });
+
+      if (retour && retour.en_attente) {
+        // Hors ligne : la clôture (montant remis) se fera en ligne, après synchronisation.
+        fermerModale();
+        return;
+      }
+
       await ouvrirModaleMontantRemis(activiteId);
     } catch (e) {
       document.getElementById('erreur-retour').textContent = e.message;
@@ -638,7 +700,7 @@ async function ouvrirModaleCorrection(activiteId) {
 
     return etat.produits.map((p) => `
       <div class="ligne-produit">
-        <span>${p.nom}</span>
+        <span>${esc(p.nom)}</span>
         <input type="number" min="0" step="1" value="${quantites[p.id] ?? 0}" data-${prefixe}="${p.id}">
       </div>
     `).join('');
@@ -740,7 +802,7 @@ async function chargerEcarts() {
   afficherVue('ecarts', ecarts.map((e) => `
     <div class="carte">
       <div class="carte-titre">
-        <strong>${e.vendeur_prenom} ${e.vendeur_nom}</strong>
+        <strong>${esc(e.vendeur_prenom)} ${esc(e.vendeur_nom)}</strong>
         <span class="etiquette ecart">${fc(e.ecart)}</span>
       </div>
       <div class="ligne"><span>Date</span><span>${dateLisible(e.date_jour + 'T00:00:00')}</span></div>
@@ -786,7 +848,7 @@ async function chargerAnomalies() {
   afficherVue('anomalies', anomalies.map((a) => `
     <div class="carte">
       <div class="carte-titre">
-        <strong>${a.vendeur_nom} — ${a.produit_nom}</strong>
+        <strong>${esc(a.vendeur_nom)} — ${esc(a.produit_nom)}</strong>
         <span class="etiquette ecart">${a.ecart}</span>
       </div>
       <div class="ligne"><span>Attendu / constaté</span><span>${a.quantite_attendue} / ${a.quantite_constatee}</span></div>
@@ -816,13 +878,13 @@ async function chargerVendeurs() {
     ${vendeurs.map((v) => `
       <div class="carte">
         <div class="carte-titre">
-          <strong>${v.prenom ? v.prenom + ' ' + v.nom : v.nom}</strong>
+          <strong>${esc(v.prenom ? v.prenom + ' ' + v.nom : v.nom)}</strong>
         </div>
         <div class="champ" style="margin-bottom:8px">
           <label>Catégorie de transport</label>
           <select data-vendeur="${v.id}">
             ${etat.categoriesTransport.map((c) => `
-              <option value="${c.id}" ${c.id === v.categorie_transport_id ? 'selected' : ''}>${libelleCategorie(c)}</option>
+              <option value="${c.id}" ${c.id === v.categorie_transport_id ? 'selected' : ''}>${esc(libelleCategorie(c))}</option>
             `).join('')}
           </select>
         </div>
@@ -956,6 +1018,96 @@ function ouvrirModaleNouveauResponsable() {
   });
 }
 
+async function ouvrirModaleCouts() {
+  let produits;
+  try {
+    produits = await api('/api/produits');
+  } catch (e) {
+    ouvrirModale('Coûts des tasses', `<p class="message-erreur">${esc(e.message)}</p>`);
+    return;
+  }
+
+  etat.produits = produits;
+
+  ouvrirModale('Coûts des tasses', `
+    <form id="form-couts">
+      <p style="color:var(--brun-500);font-size:.9rem">
+        Coût de consommables par tasse. Le nouveau coût s'applique aux ravitaillements
+        à partir de la date choisie ; les ravitaillements déjà enregistrés ne changent pas.
+        Laisse vide pour ne pas modifier.
+      </p>
+      <div class="grille-produits">
+        ${produits.map((p) => `
+          <div class="champ">
+            <label>${esc(p.nom)} — actuel : ${p.cout_actuel === null || p.cout_actuel === undefined ? 'non défini' : fc(p.cout_actuel)}</label>
+            <input type="text" inputmode="decimal" placeholder="Nouveau coût en FC" data-cout-produit="${p.id}">
+          </div>
+        `).join('')}
+      </div>
+      <div class="champ">
+        <label>Applicable à partir du</label>
+        <input type="date" id="couts-date" value="${aujourdhui()}" required>
+      </div>
+      <div class="champ">
+        <label>Motif (facultatif)</label>
+        <input type="text" id="couts-motif" maxlength="255">
+      </div>
+      <p class="message-erreur" id="erreur-couts" hidden></p>
+      <button class="principal" type="submit">Enregistrer</button>
+    </form>
+  `);
+
+  document.getElementById('form-couts').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+
+    const erreur = document.getElementById('erreur-couts');
+    erreur.hidden = true;
+
+    const dateDebut = document.getElementById('couts-date').value;
+    const motif = document.getElementById('couts-motif').value.trim();
+
+    const changements = [];
+    for (const champ of document.querySelectorAll('[data-cout-produit]')) {
+      const brut = champ.value.trim();
+      if (brut === '') continue;
+
+      const valeur = Number(brut.replace(/\s/g, '').replace(',', '.'));
+      if (!Number.isFinite(valeur) || valeur <= 0) {
+        erreur.textContent = 'Chaque coût doit être un nombre strictement positif.';
+        erreur.hidden = false;
+        return;
+      }
+      changements.push({ entite_id: Number(champ.dataset.coutProduit), valeur });
+    }
+
+    if (changements.length === 0) {
+      erreur.textContent = 'Saisis au moins un nouveau coût.';
+      erreur.hidden = false;
+      return;
+    }
+
+    try {
+      for (const c of changements) {
+        await api('/api/tarifs', {
+          method: 'POST',
+          corps: {
+            type: 'cout',
+            entite_id: c.entite_id,
+            valeur: c.valeur,
+            date_debut: dateDebut,
+            motif: motif || undefined,
+          },
+        });
+      }
+      etat.produits = await api('/api/produits');
+      fermerModale();
+    } catch (e) {
+      erreur.textContent = e.message;
+      erreur.hidden = false;
+    }
+  });
+}
+
 async function ouvrirGestionSites() {
   const [sites, responsables] = await Promise.all([api('/api/sites'), api('/api/responsables')]);
 
@@ -964,10 +1116,10 @@ async function ouvrirGestionSites() {
       ${sites.map((site) => `
         <article class="item-liste site-admin" data-site-admin="${site.id}">
           <div class="ligne-principale">
-            <strong>${site.nom}</strong>
-            <span>${site.code}</span>
+            <strong>${esc(site.nom)}</strong>
+            <span>${esc(site.code)}</span>
           </div>
-          <p class="texte-secondaire">Responsable principal : ${site.responsable_principal || 'Non affecté'}</p>
+          <p class="texte-secondaire">Responsable principal : ${esc(site.responsable_principal || 'Non affecté')}</p>
           <div class="actions-ligne">
             <button type="button" class="secondaire" data-modifier-site="${site.id}">Modifier</button>
             <button type="button" class="secondaire" data-affecter-site="${site.id}">Affecter un responsable</button>
@@ -1005,10 +1157,10 @@ function ouvrirModaleModifierSite(siteId, sites) {
 
   ouvrirModale('Modifier le site', `
     <form id="form-modifier-site">
-      <div class="champ"><label>Code</label><input id="ms-code" value="${site.code}" maxlength="50" required></div>
-      <div class="champ"><label>Nom</label><input id="ms-nom" value="${site.nom}" maxlength="150" required></div>
-      <div class="champ"><label>Adresse</label><input id="ms-adresse" value="${site.adresse || ''}" maxlength="500"></div>
-      <div class="champ"><label>Description</label><textarea id="ms-description" rows="3" maxlength="1000">${site.description || ''}</textarea></div>
+      <div class="champ"><label>Code</label><input id="ms-code" value="${esc(site.code)}" maxlength="50" required></div>
+      <div class="champ"><label>Nom</label><input id="ms-nom" value="${esc(site.nom)}" maxlength="150" required></div>
+      <div class="champ"><label>Adresse</label><input id="ms-adresse" value="${esc(site.adresse || '')}" maxlength="500"></div>
+      <div class="champ"><label>Description</label><textarea id="ms-description" rows="3" maxlength="1000">${esc(site.description || '')}</textarea></div>
       <p class="message-erreur" id="erreur-ms" hidden></p>
       <button class="principal" type="submit">Enregistrer</button>
     </form>
@@ -1039,7 +1191,7 @@ function ouvrirModaleAffecterResponsable(siteId, responsables) {
   ouvrirModale('Affecter un responsable', `
     <form id="form-affecter-responsable">
       <div class="champ"><label>Responsable</label><select id="ar-responsable" required>
-        ${responsables.map((r) => `<option value="${r.id}">${r.prenom || ''} ${r.nom} (${r.telephone})</option>`).join('')}
+        ${responsables.map((r) => `<option value="${r.id}">${esc(r.prenom || '')} ${esc(r.nom)} (${esc(r.telephone)})</option>`).join('')}
       </select></div>
       <div class="champ"><label>Type</label><select id="ar-type"><option value="principal">Principal</option><option value="adjoint">Adjoint</option></select></div>
       <p class="message-erreur" id="erreur-ar" hidden></p>
@@ -1084,7 +1236,7 @@ function ouvrirModaleNouveauVendeur() {
       <div class="champ">
         <label>Catégorie de transport</label>
         <select id="nv-categorie">
-          ${etat.categoriesTransport.map((c) => `<option value="${c.id}">${libelleCategorie(c)}</option>`).join('')}
+          ${etat.categoriesTransport.map((c) => `<option value="${c.id}">${esc(libelleCategorie(c))}</option>`).join('')}
         </select>
       </div>
       <div class="champ">
@@ -1144,13 +1296,13 @@ async function chargerSacs() {
     ${sacs.map((s) => `
       <div class="carte">
         <div class="carte-titre">
-          <strong>Sac ${s.numero}</strong>
+          <strong>Sac ${esc(s.numero)}</strong>
           <span class="etiquette ${s.statut === 'indisponible' ? 'ecart' : (s.statut === 'libre' ? 'ouverte' : 'cloturee')}">
             ${LIBELLES_STATUT_SAC[s.statut] || s.statut}
           </span>
         </div>
         <div class="ligne"><span>Catégorie</span><span>${s.categorie === 'russell' ? 'Russell' : 'standard'}</span></div>
-        ${s.motif_indisponibilite ? `<div class="ligne"><span>Motif</span><span>${s.motif_indisponibilite}</span></div>` : ''}
+        ${s.motif_indisponibilite ? `<div class="ligne"><span>Motif</span><span>${esc(s.motif_indisponibilite)}</span></div>` : ''}
         <div class="barre-actions">
           ${s.statut === 'indisponible'
             ? `<button class="principal" data-disponible="${s.id}">Rendre disponible</button>`
@@ -1248,7 +1400,7 @@ function ouvrirModaleDeplacerSac(sacId) {
       <div class="champ">
         <label>Site d'arrivée</label>
         <select id="ds-site">
-          ${autresSites.map((s) => `<option value="${s.id}">${s.nom}</option>`).join('')}
+          ${autresSites.map((s) => `<option value="${s.id}">${esc(s.nom)}</option>`).join('')}
         </select>
       </div>
       <div class="champ">
@@ -1302,7 +1454,7 @@ async function chargerArgent() {
         <label>Vendeur</label>
         <select id="argent-vendeur">
           <option value="">— choisir —</option>
-          ${etat.vendeurs.map((v) => `<option value="${v.id}">${v.prenom ? v.prenom + ' ' + v.nom : v.nom}</option>`).join('')}
+          ${etat.vendeurs.map((v) => `<option value="${v.id}">${esc(v.prenom ? v.prenom + ' ' + v.nom : v.nom)}</option>`).join('')}
         </select>
       </div>
       <div id="argent-solde"></div>
@@ -1313,7 +1465,7 @@ async function chargerArgent() {
       <button class="principal" id="btn-nouvelle-depense" style="margin-bottom:14px">+ Nouvelle dépense</button>
       ${depenses.length === 0 ? '<p class="liste-vide">Aucune dépense aujourd\'hui.</p>' : depenses.map((d) => `
         <div class="ligne">
-          <span>${d.categorie} — ${d.libelle}
+          <span>${esc(d.categorie)} — ${esc(d.libelle)}
             <button class="secondaire" style="padding:2px 8px;margin-left:6px;font-size:.78rem" data-corriger-depense="${d.id}">corriger</button>
           </span>
           <span class="montant">${fc(d.montant)}</span>
@@ -1366,7 +1518,7 @@ async function afficherSoldeVendeur() {
     document.getElementById('btn-retrait').addEventListener('click', () => ouvrirModaleRetrait(vendeurId));
     document.getElementById('btn-paiement-solde').addEventListener('click', () => ouvrirModalePaiementSolde(vendeurId));
   } catch (e) {
-    zone.innerHTML = `<p class="message-erreur">${e.message}</p>`;
+    zone.innerHTML = `<p class="message-erreur">${esc(e.message)}</p>`;
   }
 }
 
@@ -1452,7 +1604,7 @@ function ouvrirModaleNouvelleDepense() {
       <div class="champ">
         <label>Catégorie</label>
         <select id="dep-categorie">
-          ${etat.categoriesDepenses.map((c) => `<option value="${c.id}">${c.nom}</option>`).join('')}
+          ${etat.categoriesDepenses.map((c) => `<option value="${c.id}">${esc(c.nom)}</option>`).join('')}
         </select>
       </div>
       <div class="champ">
@@ -1501,12 +1653,12 @@ function ouvrirModaleCorrectionDepense(depense) {
       <div class="champ">
         <label>Catégorie</label>
         <select id="cdep-categorie">
-          ${etat.categoriesDepenses.map((c) => `<option value="${c.id}" ${c.id === depense.categorie_id ? 'selected' : ''}>${c.nom}</option>`).join('')}
+          ${etat.categoriesDepenses.map((c) => `<option value="${c.id}" ${c.id === depense.categorie_id ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}
         </select>
       </div>
       <div class="champ">
         <label>Libellé</label>
-        <input type="text" id="cdep-libelle" maxlength="255" value="${depense.libelle}" required>
+        <input type="text" id="cdep-libelle" maxlength="255" value="${esc(depense.libelle)}" required>
       </div>
       <div class="champ">
         <label>Montant (FC)</label>
@@ -1514,7 +1666,7 @@ function ouvrirModaleCorrectionDepense(depense) {
       </div>
       <div class="champ">
         <label>Note (optionnel)</label>
-        <input type="text" id="cdep-note" maxlength="255" value="${depense.note ?? ''}">
+        <input type="text" id="cdep-note" maxlength="255" value="${esc(depense.note ?? '')}">
       </div>
       <div class="champ">
         <label>Motif de la correction</label>
@@ -1567,7 +1719,7 @@ async function chargerTableauDeBord(date = null) {
     return `
       <div class="carte" data-site-carte="${entree.site.id}" style="cursor:pointer">
         <div class="carte-titre">
-          <strong>${entree.site.nom}</strong>
+          <strong>${esc(entree.site.nom)}</strong>
           <span class="etiquette ${statut ?? ''}">${libelleStatut}</span>
         </div>
         <div class="ligne"><span>Nombre des vendeurs</span><span class="montant">${(rapport.vendeurs)}</span></div>

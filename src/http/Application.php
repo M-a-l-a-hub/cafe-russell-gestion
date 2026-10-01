@@ -63,6 +63,25 @@ final class Application
             }
         }
 
+        $cle = $requete->methode === 'POST' && $requete->utilisateur !== null
+            ? $requete->entete('idempotency-key')
+            : null;
+
+        if ($cle !== null) {
+            if (!preg_match('/^[A-Za-z0-9_-]{8,64}$/', $cle)) {
+                throw new HttpException(400, 'cle_invalide', 'Clé d’idempotence invalide.');
+            }
+
+            $this->executerUneSeuleFois($cle, $route, $requete);
+
+            return;
+        }
+
+        $this->executerGestionnaire($route, $requete);
+    }
+
+    private function executerGestionnaire(array $route, Requete $requete): void
+    {
         $resultat = ($route['gestionnaire'])($requete);
 
         if ($resultat instanceof Resultat) {
@@ -72,6 +91,79 @@ final class Application
         }
 
         Reponse::succes($resultat);
+    }
+
+    /**
+     * Saisies envoyées depuis la file d'attente hors ligne : une même clé
+     * (en-tête Idempotency-Key) n'est exécutée qu'une fois. Un rejeu
+     * (réponse perdue, réseau instable) renvoie la réponse d'origine.
+     * Seules les réussites sont mémorisées : un refus peut être retenté.
+     */
+    private function executerUneSeuleFois(string $cle, array $route, Requete $requete): void
+    {
+        $db = getDatabaseConnection();
+        $userId = (int) $requete->utilisateur['id'];
+
+        // Deux requêtes simultanées avec la même clé passent l'une après l'autre.
+        $verrou = $db->prepare('SELECT pg_advisory_lock(hashtext(:cle))');
+        $verrou->execute(['cle' => $cle]);
+
+        try {
+            $stmt = $db->prepare(
+                'SELECT user_id, statut_http, reponse FROM requetes_idempotentes WHERE cle = :cle'
+            );
+            $stmt->execute(['cle' => $cle]);
+            $existant = $stmt->fetch();
+
+            if ($existant) {
+                if ((int) $existant['user_id'] !== $userId) {
+                    throw new HttpException(409, 'cle_deja_utilisee', 'Clé d’idempotence déjà utilisée.');
+                }
+
+                http_response_code((int) $existant['statut_http']);
+                header('Content-Type: application/json; charset=utf-8');
+                header('Cache-Control: no-store');
+                header('X-Content-Type-Options: nosniff');
+                echo $existant['reponse'];
+
+                return;
+            }
+
+            ob_start();
+
+            try {
+                $this->executerGestionnaire($route, $requete);
+            } catch (Throwable $e) {
+                ob_end_clean();
+
+                throw $e;
+            }
+
+            $corps = (string) ob_get_contents();
+            $statut = http_response_code();
+            $statut = is_int($statut) ? $statut : 200;
+
+            ob_end_flush();
+
+            if ($statut >= 200 && $statut < 300) {
+                $insertion = $db->prepare(
+                    'INSERT INTO requetes_idempotentes (cle, user_id, methode, chemin, statut_http, reponse)
+                     VALUES (:cle, :user_id, :methode, :chemin, :statut, :reponse)
+                     ON CONFLICT (cle) DO NOTHING'
+                );
+                $insertion->execute([
+                    'cle' => $cle,
+                    'user_id' => $userId,
+                    'methode' => $requete->methode,
+                    'chemin' => substr($requete->chemin, 0, 255),
+                    'statut' => $statut,
+                    'reponse' => $corps,
+                ]);
+            }
+        } finally {
+            $deverrou = $db->prepare('SELECT pg_advisory_unlock(hashtext(:cle))');
+            $deverrou->execute(['cle' => $cle]);
+        }
     }
 
     private function repondreErreur(Throwable $e, ?Requete $requete): void

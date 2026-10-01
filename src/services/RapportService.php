@@ -32,6 +32,7 @@ class RapportService extends ServiceBase
         $resume = [
             'journee' => $journee,
             'activites' => [],
+            'vendeurs' => 0,
             'ventes' => 0.0,
             'transport' => 0.0,
             'commissions' => 0.0,
@@ -43,6 +44,12 @@ class RapportService extends ServiceBase
             'benefice_apres_depenses_site' => 0.0,
             'ecarts' => [],
         ];
+
+        $nbVendeurs = $this->fetchOne(
+            'SELECT COUNT(DISTINCT vendeur_id) AS n FROM activites WHERE journee_id = :id',
+            ['id' => $journeeId]
+        );
+        $resume['vendeurs'] = (int) $nbVendeurs['n'];
 
         $calculateur = new ActiviteService();
 

@@ -56,13 +56,13 @@ final class TableauDeBordControleur extends ControleurBase
                 $entree['benefice_entreprise'] = $rapport['benefice_entreprise'];
                 $entree['benefice_russell'] = $rapport['benefice_russell'];
                 $entree['depenses_site'] = $rapport['depenses_site'];
-                $entree['vendeurs_site'] = $rapport['vendeurs_site'];
+                $entree['vendeurs_site'] = $rapport['vendeurs'];
 
                 $totaux['ventes'] += $rapport['ventes'];
                 $totaux['benefice_entreprise'] += $rapport['benefice_entreprise'];
                 $totaux['benefice_russell'] += $rapport['benefice_russell'];
                 $totaux['depenses_site'] += $rapport['depenses_site'];
-                $totaux['vendeurs_site'] += $rapport['vendeurs_site'];
+                $totaux['vendeurs_site'] += $rapport['vendeurs'];
             }
 
             $ecarts = $this->uneLigne(

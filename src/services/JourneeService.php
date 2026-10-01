@@ -90,16 +90,42 @@ class JourneeService
             RETURNING id
         ";
 
-        $stmt = $this->db->prepare($sql);
+        $this->db->beginTransaction();
 
-        $stmt->execute([
-            'site_id' => $siteId,
-            'date_jour' => $date,
-            'ouverte_par' => $userId,
-            'note_ouverture' => $note
-        ]);
+        try {
+            $stmt = $this->db->prepare($sql);
 
-        return (int) $stmt->fetchColumn();
+            $stmt->execute([
+                'site_id' => $siteId,
+                'date_jour' => $date,
+                'ouverte_par' => $userId,
+                'note_ouverture' => $note
+            ]);
+
+            $journeeId = (int) $stmt->fetchColumn();
+
+            AuditService::enregistrer(
+                $this->db,
+                $userId,
+                'journee_ouverte',
+                'journees',
+                $journeeId,
+                $siteId,
+                null,
+                ['statut' => 'ouverte', 'date_jour' => $date],
+                $note
+            );
+
+            $this->db->commit();
+
+            return $journeeId;
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+
+            throw $e;
+        }
     }
 
     /**
@@ -163,18 +189,42 @@ class JourneeService
               AND statut = 'ouverte'
         ";
 
-        $stmt = $this->db->prepare($sql);
+        $this->db->beginTransaction();
 
-        $stmt->execute([
-            'id' => $journeeId,
-            'cloturee_par' => $userId,
-            'note_cloture' => $note
-        ]);
+        try {
+            $stmt = $this->db->prepare($sql);
 
-        if ($stmt->rowCount() !== 1) {
-            throw new RuntimeException(
-                'La journée n’a pas pu être clôturée.'
+            $stmt->execute([
+                'id' => $journeeId,
+                'cloturee_par' => $userId,
+                'note_cloture' => $note
+            ]);
+
+            if ($stmt->rowCount() !== 1) {
+                throw new RuntimeException(
+                    'La journée n’a pas pu être clôturée.'
+                );
+            }
+
+            AuditService::enregistrer(
+                $this->db,
+                $userId,
+                'journee_cloturee',
+                'journees',
+                $journeeId,
+                (int) $journee['site_id'],
+                ['statut' => 'ouverte'],
+                ['statut' => 'cloturee'],
+                $note
             );
+
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+
+            throw $e;
         }
     }
 
