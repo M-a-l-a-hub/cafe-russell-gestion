@@ -459,7 +459,7 @@ async function afficherJournee() {
   const html = `
     <div class="carte">
       <h2>${dateLisible(rapport.journee.date_jour + 'T00:00:00')}</h2>
-      <div class="ligne"><span>Nombre des vendeurs</span><span class="montant">${(rapport.vendeurs)}</span></div>
+      <div class="ligne"><span>Nombre des vendeurs</span><span class="montant">${(entree.vendeurs_site ?? 0)}</span></div>
       <div class="ligne"><span>Ventes</span><span class="montant">${fc(rapport.ventes)}</span></div>
       <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(rapport.benefice_entreprise)}</span></div>
       <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(rapport.benefice_russell)}</span></div>
