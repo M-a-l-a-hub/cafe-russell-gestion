@@ -214,18 +214,22 @@ async function demarrerApp() {
   selecteur.innerHTML = sites.map((s) => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
   selecteur.hidden = sites.length <= 1 && etat.utilisateur.role !== 'super_admin';
 
-  if (sites.length === 0) {
+  const aucunSite = sites.length === 0;
+
+  if (aucunSite && etat.utilisateur.role !== 'super_admin') {
     afficherVue('accueil', '<p class="liste-vide">Aucun site accessible. Contacte Russell.</p>');
     return;
   }
 
-  etat.siteId = sites[0].id;
-  selecteur.value = String(etat.siteId);
-  selecteur.addEventListener('change', () => {
-    etat.siteId = Number(selecteur.value);
-    const vueActive = document.querySelector('nav.bas button[data-vue].actif');
-    allerA(vueActive ? vueActive.dataset.vue : 'accueil');
-  });
+  if (!aucunSite) {
+    etat.siteId = sites[0].id;
+    selecteur.value = String(etat.siteId);
+    selecteur.addEventListener('change', () => {
+      etat.siteId = Number(selecteur.value);
+      const vueActive = document.querySelector('nav.bas button[data-vue].actif');
+      allerA(vueActive ? vueActive.dataset.vue : 'accueil');
+    });
+  }
 
   if (etat.utilisateur.role === 'super_admin') {
     const boutonExistant = document.querySelector('[data-role-site-creator]');
@@ -288,6 +292,12 @@ async function demarrerApp() {
       const vueActive = document.querySelector('nav.bas button[data-vue].actif');
       allerA(vueActive ? vueActive.dataset.vue : 'accueil');
     });
+  }
+
+  if (aucunSite) {
+    selecteur.hidden = true;
+    afficherVue('accueil', '<p class="liste-vide">Aucun site pour le moment. Crée le premier avec le bouton « + Site ».</p>');
+    return;
   }
 
   await allerA('accueil');
