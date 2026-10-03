@@ -34,14 +34,25 @@ const etat = {
  * ------------------------------------------------------------------- */
 
 async function api(chemin, options = {}) {
+  const methode = options.method || 'GET';
+  const enregistrable = HorsLigne.estEnregistrable(methode, chemin);
+  const cle = enregistrable ? HorsLigne.nouvelleCle() : null;
+
   const config = {
-    method: options.method || 'GET',
+    method: methode,
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
   };
 
   if (options.method && options.method !== 'GET' && etat.csrf) {
     config.headers['X-CSRF-Token'] = etat.csrf;
+  }
+
+  if (cle) {
+    config.headers['Idempotency-Key'] = cle;
+    // Réseau lent ou instable : on met en file plutôt que d'attendre sans fin.
+    // Le serveur ignore un rejeu de la même clé, donc pas de doublon.
+    config.signal = AbortSignal.timeout(20000);
   }
 
   if (options.corps) {
@@ -53,6 +64,17 @@ async function api(chemin, options = {}) {
   try {
     reponse = await fetch(chemin, config);
   } catch {
+    if (methode === 'GET') {
+      const enCache = await HorsLigne.lireCache(chemin);
+      if (enCache) return enCache.donnees;
+    }
+
+    if (enregistrable) {
+      await HorsLigne.ajouter({ cle, chemin, corps: options.corps });
+      HorsLigne.notifier('Enregistré hors ligne. Sera envoyé dès le retour du réseau.');
+      return { en_attente: true, cle };
+    }
+
     throw new ErreurApi('reseau', "Impossible de joindre le serveur. Vérifie ta connexion.");
   }
 
@@ -66,6 +88,10 @@ async function api(chemin, options = {}) {
 
   if (!donnees.ok) {
     throw new ErreurApi(donnees.erreur.code, donnees.erreur.message, reponse.status);
+  }
+
+  if (methode === 'GET') {
+    HorsLigne.mettreEnCache(chemin, donnees.donnees);
   }
 
   return donnees.donnees;
@@ -139,10 +165,54 @@ formConnexion.addEventListener('submit', async (ev) => {
   }
 });
 
-document.getElementById('bouton-deconnexion').addEventListener('click', async () => {
+async function deconnecter() {
   try { await api('/api/logout', { method: 'POST' }); } catch { /* on quitte quand même */ }
+  await HorsLigne.viderCache();
   window.location.reload();
-});
+}
+
+const ICONES_MENU = {
+  site: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
+  gerer: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>',
+  responsable: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M15 11h6"/></svg>',
+  couts: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13v5.5A5.5 5.5 0 0 1 11.5 19h-2A5.5 5.5 0 0 1 4 13.5V8Z"/><path d="M17 9.5h1.2a2.3 2.3 0 0 1 0 4.6H17"/></svg>',
+  sortie: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h4"/><path d="M14 8l4 4-4 4M18 12H9"/></svg>',
+};
+
+function ouvrirMenu() {
+  const actions = [];
+
+  if (etat.utilisateur && etat.utilisateur.role === 'super_admin') {
+    actions.push(
+      { cle: 'site', libelle: 'Nouveau site', action: ouvrirModaleNouveauSite },
+      { cle: 'gerer', libelle: 'Gérer les sites', action: ouvrirGestionSites },
+      { cle: 'responsable', libelle: 'Nouveau responsable', action: ouvrirModaleNouveauResponsable },
+      { cle: 'couts', libelle: 'Coûts des tasses', action: ouvrirModaleCouts },
+    );
+  }
+
+  actions.push({ cle: 'sortie', libelle: 'Déconnexion', action: deconnecter, danger: true });
+
+  ouvrirModale('Menu', `
+    <div class="liste-menu">
+      ${actions.map((a) => `
+        <button type="button" class="item-menu${a.danger ? ' danger' : ''}" data-menu="${a.cle}">
+          ${ICONES_MENU[a.cle]}<span>${esc(a.libelle)}</span>
+        </button>
+      `).join('')}
+    </div>
+  `);
+
+  elModale.querySelectorAll('[data-menu]').forEach((bouton) => {
+    bouton.addEventListener('click', () => {
+      const choix = actions.find((a) => a.cle === bouton.dataset.menu);
+      fermerModale();
+      choix.action();
+    });
+  });
+}
+
+document.getElementById('bouton-menu').addEventListener('click', ouvrirMenu);
 
 async function tenterSessionExistante() {
   try {
@@ -187,62 +257,21 @@ async function demarrerApp() {
   selecteur.innerHTML = sites.map((s) => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
   selecteur.hidden = sites.length <= 1 && etat.utilisateur.role !== 'super_admin';
 
-  if (sites.length === 0) {
+  const aucunSite = sites.length === 0;
+
+  if (aucunSite && etat.utilisateur.role !== 'super_admin') {
     afficherVue('accueil', '<p class="liste-vide">Aucun site accessible. Contacte Russell.</p>');
     return;
   }
 
-  etat.siteId = sites[0].id;
-  selecteur.value = String(etat.siteId);
-  selecteur.addEventListener('change', () => {
-    etat.siteId = Number(selecteur.value);
-    const vueActive = document.querySelector('nav.bas button[data-vue].actif');
-    allerA(vueActive ? vueActive.dataset.vue : 'accueil');
-  });
-
-  if (etat.utilisateur.role === 'super_admin') {
-    const boutonExistant = document.querySelector('[data-role-site-creator]');
-    if (boutonExistant) boutonExistant.remove();
-    const gestionExistante = document.querySelector('[data-role-site-manager]');
-    if (gestionExistante) gestionExistante.remove();
-    const responsableExistant = document.querySelector('[data-role-responsable-creator]');
-    if (responsableExistant) responsableExistant.remove();
-
-    const actionSite = document.createElement('button');
-    actionSite.type = 'button';
-    actionSite.className = 'secondaire';
-    actionSite.dataset.roleSiteCreator = 'true';
-    actionSite.style.marginLeft = '12px';
-    actionSite.textContent = '+ Site';
-    actionSite.addEventListener('click', ouvrirModaleNouveauSite);
-    selecteur.insertAdjacentElement('afterend', actionSite);
-
-    const gestionSites = document.createElement('button');
-    gestionSites.type = 'button';
-    gestionSites.className = 'secondaire';
-    gestionSites.dataset.roleSiteManager = 'true';
-    gestionSites.style.marginLeft = '8px';
-    gestionSites.textContent = 'Gérer les sites';
-    gestionSites.addEventListener('click', ouvrirGestionSites);
-    actionSite.insertAdjacentElement('afterend', gestionSites);
-
-    const actionResponsable = document.createElement('button');
-    actionResponsable.type = 'button';
-    actionResponsable.className = 'secondaire';
-    actionResponsable.dataset.roleResponsableCreator = 'true';
-    actionResponsable.style.marginLeft = '8px';
-    actionResponsable.textContent = '+ Responsable';
-    actionResponsable.addEventListener('click', ouvrirModaleNouveauResponsable);
-    gestionSites.insertAdjacentElement('afterend', actionResponsable);
-
-    const boutonCouts = document.createElement('button');
-    boutonCouts.type = 'button';
-    boutonCouts.className = 'secondaire';
-    boutonCouts.dataset.roleCouts = 'true';
-    boutonCouts.style.marginLeft = '8px';
-    boutonCouts.textContent = 'Coûts des tasses';
-    boutonCouts.addEventListener('click', ouvrirModaleCouts);
-    actionResponsable.insertAdjacentElement('afterend', boutonCouts);
+  if (!aucunSite) {
+    etat.siteId = sites[0].id;
+    selecteur.value = String(etat.siteId);
+    selecteur.addEventListener('change', () => {
+      etat.siteId = Number(selecteur.value);
+      const vueActive = document.querySelector('nav.bas button[data-vue].actif');
+      allerA(vueActive ? vueActive.dataset.vue : 'accueil');
+    });
   }
 
   document.querySelectorAll('nav.bas button[data-vue]').forEach((bouton) => {
@@ -251,6 +280,22 @@ async function demarrerApp() {
 
   if (etat.utilisateur.role !== 'super_admin') {
     document.querySelectorAll('[data-russell-seulement]').forEach((el) => el.remove());
+  }
+
+  HorsLigne.demarrer();
+
+  if (!etat.ecouteSynchro) {
+    etat.ecouteSynchro = true;
+    document.addEventListener('horsligne:synchronise', () => {
+      const vueActive = document.querySelector('nav.bas button[data-vue].actif');
+      allerA(vueActive ? vueActive.dataset.vue : 'accueil');
+    });
+  }
+
+  if (aucunSite) {
+    selecteur.hidden = true;
+    afficherVue('accueil', '<p class="liste-vide">Aucun site pour le moment. Ouvre le menu puis choisis « Nouveau site ».</p>');
+    return;
   }
 
   await allerA('accueil');
@@ -594,7 +639,14 @@ async function ouvrirModaleCloture(activiteId) {
       .map((el) => ({ produit_id: Number(el.dataset.retour), quantite: Number(el.value) }));
 
     try {
-      await api(`/api/activites/${activiteId}/retours`, { method: 'POST', corps: { lignes } });
+      const retour = await api(`/api/activites/${activiteId}/retours`, { method: 'POST', corps: { lignes } });
+
+      if (retour && retour.en_attente) {
+        // Hors ligne : la clôture (montant remis) se fera en ligne, après synchronisation.
+        fermerModale();
+        return;
+      }
+
       await ouvrirModaleMontantRemis(activiteId);
     } catch (e) {
       document.getElementById('erreur-retour').textContent = e.message;
