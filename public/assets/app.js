@@ -34,25 +34,14 @@ const etat = {
  * ------------------------------------------------------------------- */
 
 async function api(chemin, options = {}) {
-  const methode = options.method || 'GET';
-  const enregistrable = HorsLigne.estEnregistrable(methode, chemin);
-  const cle = enregistrable ? HorsLigne.nouvelleCle() : null;
-
   const config = {
-    method: methode,
+    method: options.method || 'GET',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
   };
 
   if (options.method && options.method !== 'GET' && etat.csrf) {
     config.headers['X-CSRF-Token'] = etat.csrf;
-  }
-
-  if (cle) {
-    config.headers['Idempotency-Key'] = cle;
-    // Réseau lent ou instable : on met en file plutôt que d'attendre sans fin.
-    // Le serveur ignore un rejeu de la même clé, donc pas de doublon.
-    config.signal = AbortSignal.timeout(20000);
   }
 
   if (options.corps) {
@@ -64,17 +53,6 @@ async function api(chemin, options = {}) {
   try {
     reponse = await fetch(chemin, config);
   } catch {
-    if (methode === 'GET') {
-      const enCache = await HorsLigne.lireCache(chemin);
-      if (enCache) return enCache.donnees;
-    }
-
-    if (enregistrable) {
-      await HorsLigne.ajouter({ cle, chemin, corps: options.corps });
-      HorsLigne.notifier('Enregistré hors ligne. Sera envoyé dès le retour du réseau.');
-      return { en_attente: true, cle };
-    }
-
     throw new ErreurApi('reseau', "Impossible de joindre le serveur. Vérifie ta connexion.");
   }
 
@@ -88,10 +66,6 @@ async function api(chemin, options = {}) {
 
   if (!donnees.ok) {
     throw new ErreurApi(donnees.erreur.code, donnees.erreur.message, reponse.status);
-  }
-
-  if (methode === 'GET') {
-    HorsLigne.mettreEnCache(chemin, donnees.donnees);
   }
 
   return donnees.donnees;
@@ -167,7 +141,6 @@ formConnexion.addEventListener('submit', async (ev) => {
 
 document.getElementById('bouton-deconnexion').addEventListener('click', async () => {
   try { await api('/api/logout', { method: 'POST' }); } catch { /* on quitte quand même */ }
-  await HorsLigne.viderCache();
   window.location.reload();
 });
 
@@ -214,22 +187,18 @@ async function demarrerApp() {
   selecteur.innerHTML = sites.map((s) => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
   selecteur.hidden = sites.length <= 1 && etat.utilisateur.role !== 'super_admin';
 
-  const aucunSite = sites.length === 0;
-
-  if (aucunSite && etat.utilisateur.role !== 'super_admin') {
+  if (sites.length === 0) {
     afficherVue('accueil', '<p class="liste-vide">Aucun site accessible. Contacte Russell.</p>');
     return;
   }
 
-  if (!aucunSite) {
-    etat.siteId = sites[0].id;
-    selecteur.value = String(etat.siteId);
-    selecteur.addEventListener('change', () => {
-      etat.siteId = Number(selecteur.value);
-      const vueActive = document.querySelector('nav.bas button[data-vue].actif');
-      allerA(vueActive ? vueActive.dataset.vue : 'accueil');
-    });
-  }
+  etat.siteId = sites[0].id;
+  selecteur.value = String(etat.siteId);
+  selecteur.addEventListener('change', () => {
+    etat.siteId = Number(selecteur.value);
+    const vueActive = document.querySelector('nav.bas button[data-vue].actif');
+    allerA(vueActive ? vueActive.dataset.vue : 'accueil');
+  });
 
   if (etat.utilisateur.role === 'super_admin') {
     const boutonExistant = document.querySelector('[data-role-site-creator]');
@@ -282,22 +251,6 @@ async function demarrerApp() {
 
   if (etat.utilisateur.role !== 'super_admin') {
     document.querySelectorAll('[data-russell-seulement]').forEach((el) => el.remove());
-  }
-
-  HorsLigne.demarrer();
-
-  if (!etat.ecouteSynchro) {
-    etat.ecouteSynchro = true;
-    document.addEventListener('horsligne:synchronise', () => {
-      const vueActive = document.querySelector('nav.bas button[data-vue].actif');
-      allerA(vueActive ? vueActive.dataset.vue : 'accueil');
-    });
-  }
-
-  if (aucunSite) {
-    selecteur.hidden = true;
-    afficherVue('accueil', '<p class="liste-vide">Aucun site pour le moment. Crée le premier avec le bouton « + Site ».</p>');
-    return;
   }
 
   await allerA('accueil');
@@ -641,14 +594,7 @@ async function ouvrirModaleCloture(activiteId) {
       .map((el) => ({ produit_id: Number(el.dataset.retour), quantite: Number(el.value) }));
 
     try {
-      const retour = await api(`/api/activites/${activiteId}/retours`, { method: 'POST', corps: { lignes } });
-
-      if (retour && retour.en_attente) {
-        // Hors ligne : la clôture (montant remis) se fera en ligne, après synchronisation.
-        fermerModale();
-        return;
-      }
-
+      await api(`/api/activites/${activiteId}/retours`, { method: 'POST', corps: { lignes } });
       await ouvrirModaleMontantRemis(activiteId);
     } catch (e) {
       document.getElementById('erreur-retour').textContent = e.message;

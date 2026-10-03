@@ -131,33 +131,73 @@ button.secondaire {
 .entete {
   background: var(--brun-900);
   color: var(--creme);
-  padding: 14px 18px calc(14px + env(safe-area-inset-top, 0px));
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
   position: sticky;
   top: 0;
   z-index: 5;
 }
-.entete .qui { font-size: .85rem; opacity: .85; }
-.entete .titre-site { font-weight: 600; }
-.entete .bloc-titre { display: flex; align-items: center; gap: 10px; }
+.entete-ligne {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.entete .bloc-titre { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.entete .bloc-texte { min-width: 0; }
 .entete .icone-entete { flex-shrink: 0; opacity: .9; }
+.entete .titre-site { font-weight: 600; white-space: nowrap; }
+.entete .qui {
+  font-size: .85rem;
+  opacity: .85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.entete-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.bouton-menu {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(246, 239, 228, .12);
+  color: var(--creme);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.bouton-menu:active { background: rgba(246, 239, 228, .24); }
 .entete select#selecteur-site {
+  width: 100%;
+  margin-top: 10px;
   background: var(--brun-700);
   color: var(--creme);
   border: none;
-  border-radius: 6px;
-  padding: 6px 10px;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 1rem;
 }
-.entete button.deconnexion {
+.entete select#selecteur-site[hidden] { display: none; }
+
+.liste-menu { display: flex; flex-direction: column; }
+.item-menu {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px 4px;
   background: none;
   border: none;
-  color: var(--creme);
-  opacity: .8;
-  font-size: .85rem;
+  border-bottom: 1px solid var(--creme-2);
+  color: var(--brun-900);
+  font-size: 1rem;
+  text-align: left;
   cursor: pointer;
 }
+.item-menu:last-child { border-bottom: none; }
+.item-menu svg { flex-shrink: 0; color: var(--brun-500); }
+.item-menu:active { background: var(--creme); }
+.item-menu.danger, .item-menu.danger svg { color: var(--rouge); }
 
 main.contenu {
   flex: 1;

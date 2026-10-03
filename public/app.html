@@ -55,18 +55,24 @@
 <div id="app" class="app">
   <div class="colonne-app">
     <header class="entete">
-      <div class="bloc-titre">
-        <svg class="icone-entete" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 8h13v5.5A5.5 5.5 0 0 1 11.5 19h-2A5.5 5.5 0 0 1 4 13.5V8Z"/>
-          <path d="M17 9.5h1.2a2.3 2.3 0 0 1 0 4.6H17"/>
-        </svg>
-        <div>
-          <div class="titre-site">Café Russell</div>
-          <div class="qui" id="nom-utilisateur"></div>
+      <div class="entete-ligne">
+        <div class="bloc-titre">
+          <svg class="icone-entete" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 8h13v5.5A5.5 5.5 0 0 1 11.5 19h-2A5.5 5.5 0 0 1 4 13.5V8Z"/>
+            <path d="M17 9.5h1.2a2.3 2.3 0 0 1 0 4.6H17"/>
+          </svg>
+          <div class="bloc-texte">
+            <div class="titre-site">Café Russell</div>
+            <div class="qui" id="nom-utilisateur"></div>
+          </div>
+        </div>
+        <div class="entete-actions" id="entete-actions">
+          <button type="button" class="bouton-menu" id="bouton-menu" aria-label="Menu">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
         </div>
       </div>
       <select id="selecteur-site" hidden></select>
-      <button class="deconnexion" id="bouton-deconnexion">Déconnexion</button>
     </header>
 
     <main class="contenu">

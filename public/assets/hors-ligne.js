@@ -213,7 +213,8 @@ const HorsLigne = (() => {
     style.textContent = `
       .badge-sync { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--creme-2);
         background: var(--creme); color: var(--brun-900); border-radius: 999px; padding: 4px 10px;
-        font-size: .8rem; cursor: pointer; margin-left: 8px; }
+        font-size: .78rem; cursor: pointer; white-space: nowrap; max-width: 52vw;
+        overflow: hidden; text-overflow: ellipsis; }
       .badge-sync.hors-ligne { background: var(--brun-900); color: var(--creme); border-color: var(--brun-900); }
       .badge-sync.attention { border-color: var(--rouge); color: var(--rouge); }
       .toast-sync { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 40;
@@ -242,7 +243,7 @@ const HorsLigne = (() => {
     let el = document.getElementById('badge-sync');
     if (el) return el;
 
-    const cible = document.getElementById('nom-utilisateur');
+    const cible = document.getElementById('entete-actions');
     if (!cible) return null;
 
     el = document.createElement('button');
@@ -251,7 +252,7 @@ const HorsLigne = (() => {
     el.className = 'badge-sync';
     el.hidden = true;
     el.addEventListener('click', ouvrirFile);
-    cible.insertAdjacentElement('afterend', el);
+    cible.insertAdjacentElement('afterbegin', el);
 
     return el;
   }
