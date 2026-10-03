@@ -81,7 +81,13 @@ function getDatabaseConnection(): PDO
         [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false,
+            // DB_EMULATE_PREPARES=true : pas de requêtes préparées côté serveur
+            // (évite DEALLOCATE, qui casse certaines transactions derrière le
+            // pooler Neon). Faux par défaut.
+            PDO::ATTR_EMULATE_PREPARES => filter_var(
+                $_ENV['DB_EMULATE_PREPARES'] ?? (getenv('DB_EMULATE_PREPARES') ?: 'false'),
+                FILTER_VALIDATE_BOOLEAN
+            ),
         ]
     );
 
