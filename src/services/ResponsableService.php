@@ -33,8 +33,8 @@ final class ResponsableService extends ServiceBase
         if ($email !== null && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             throw new InvalidArgumentException('L’adresse e-mail est invalide.');
         }
-        if (strlen($motDePasse) < 8 || strlen($motDePasse) > 200) {
-            throw new InvalidArgumentException('Le mot de passe doit contenir au moins 8 caractères.');
+        if (strlen($motDePasse) < 10 || strlen($motDePasse) > 200) {
+            throw new InvalidArgumentException('Le mot de passe doit contenir au moins 10 caractères.');
         }
 
         if ($this->fetchOne('SELECT id FROM users WHERE telephone = :telephone', ['telephone' => $telephone]) !== null) {

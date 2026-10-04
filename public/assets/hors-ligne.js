@@ -90,12 +90,37 @@ const HorsLigne = (() => {
 
   /* ---- File d'attente ---- */
 
+  function nomProduit(id) {
+    const p = (etat.produits || []).find((x) => x.id === id);
+    return p ? p.nom : `produit ${id}`;
+  }
+
+  function resumeLignes(lignes) {
+    const texte = (lignes || [])
+      .filter((l) => Number(l.quantite) > 0)
+      .map((l) => `${l.quantite} ${nomProduit(l.produit_id)}`)
+      .join(', ');
+    return texte || 'aucune quantité';
+  }
+
   function decrire(chemin, corps) {
     if (/depenses$/.test(chemin)) {
       return `Dépense : ${corps?.libelle ?? ''} (${Number(corps?.montant ?? 0).toLocaleString('fr-FR')} FC)`;
     }
-    if (/retours$/.test(chemin)) return 'Retour des quantités non vendues';
-    return 'Ravitaillement';
+
+    if (/retours$/.test(chemin)) {
+      const num = (chemin.match(/activites\/(\d+)/) || [])[1];
+      return `Retour (activité ${num ?? ''}) : ${resumeLignes(corps?.lignes)}`;
+    }
+
+    if (corps && corps.vendeur_id) {
+      const v = (etat.vendeurs || []).find((x) => x.id === corps.vendeur_id);
+      const nom = v ? `${v.prenom ? v.prenom + ' ' : ''}${v.nom}` : `vendeur ${corps.vendeur_id}`;
+      return `Ravitaillement ${nom}, ${corps.periode ?? ''} : ${resumeLignes(corps.lignes)}`;
+    }
+
+    const num = (chemin.match(/activites\/(\d+)/) || [])[1];
+    return `Ravitaillement complémentaire (activité ${num ?? ''}) : ${resumeLignes(corps?.lignes)}`;
   }
 
   async function ajouter({ cle, chemin, corps }) {
@@ -333,3 +358,7 @@ const HorsLigne = (() => {
     ajouter, synchroniser, demarrer, notifier, rafraichirBadge,
   };
 })();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}

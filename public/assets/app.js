@@ -306,13 +306,29 @@ async function allerA(vue) {
     b.classList.toggle('actif', b.dataset.vue === vue);
   });
 
-  if (vue === 'accueil') return chargerAccueil();
-  if (vue === 'ecarts') return chargerEcarts();
-  if (vue === 'anomalies') return chargerAnomalies();
-  if (vue === 'vendeurs') return chargerVendeurs();
-  if (vue === 'sacs') return chargerSacs();
-  if (vue === 'argent') return chargerArgent();
-  if (vue === 'tableau') return chargerTableauDeBord();
+  if (etat.siteId == null && vue !== 'tableau') {
+    afficherVue(vue, '<p class="liste-vide">Aucun site pour le moment. Ouvre le menu puis choisis « Nouveau site ».</p>');
+    return;
+  }
+
+  const chargeurs = {
+    accueil: chargerAccueil,
+    ecarts: chargerEcarts,
+    anomalies: chargerAnomalies,
+    vendeurs: chargerVendeurs,
+    sacs: chargerSacs,
+    argent: chargerArgent,
+    tableau: chargerTableauDeBord,
+  };
+
+  if (!chargeurs[vue]) return;
+
+  try {
+    await chargeurs[vue]();
+  } catch (e) {
+    console.error(e);
+    afficherVue(vue, `<p class="message-erreur">${esc(e.message || 'Erreur de chargement.')}</p>`);
+  }
 }
 
 function afficherVue(id, html) {
@@ -459,7 +475,7 @@ async function afficherJournee() {
   const html = `
     <div class="carte">
       <h2>${dateLisible(rapport.journee.date_jour + 'T00:00:00')}</h2>
-      <div class="ligne"><span>Nombre des vendeurs</span><span class="montant">${(entree.vendeurs_site ?? 0)}</span></div>
+      <div class="ligne"><span>Nombre des vendeurs</span><span class="montant">${(rapport.vendeurs)}</span></div>
       <div class="ligne"><span>Ventes</span><span class="montant">${fc(rapport.ventes)}</span></div>
       <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(rapport.benefice_entreprise)}</span></div>
       <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(rapport.benefice_russell)}</span></div>
@@ -1643,6 +1659,7 @@ function ouvrirModaleNouvelleDepense() {
           libelle: document.getElementById('dep-libelle').value.trim(),
           montant: Number(document.getElementById('dep-montant').value),
           site_id: etat.siteId,
+          date: aujourdhui(),
           note: document.getElementById('dep-note').value.trim() || null,
         },
       });
@@ -1730,7 +1747,7 @@ async function chargerTableauDeBord(date = null) {
           <strong>${esc(entree.site.nom)}</strong>
           <span class="etiquette ${statut ?? ''}">${libelleStatut}</span>
         </div>
-        <div class="ligne"><span>Nombre des vendeurs</span><span class="montant">${(rapport.vendeurs)}</span></div>
+        <div class="ligne"><span>Nombre des vendeurs</span><span class="montant">${entree.vendeurs_site ?? 0}</span></div>
         <div class="ligne"><span>Ventes</span><span class="montant">${fc(entree.ventes)}</span></div>
         <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(entree.benefice_entreprise)}</span></div>
         <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(entree.benefice_russell)}</span></div>

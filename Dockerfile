@@ -14,6 +14,10 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 COPY . .
 
+RUN mkdir -p storage/logs && chown -R www-data:www-data storage
+
+USER www-data
+
 ENV PHP_CLI_SERVER_WORKERS=4
 
 CMD ["sh", "-c", "php -S 0.0.0.0:${PORT:-10000} -t public public/index.php"]
