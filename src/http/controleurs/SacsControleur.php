@@ -65,6 +65,21 @@ final class SacsControleur extends ControleurBase
         return new Resultat(201, ['mouvement_id' => $id]);
     }
 
+    /** POST /api/sacs/{id}/categorie {categorie: standard|russell, motif?} (Russell) */
+    public function changerCategorie(Requete $req): array
+    {
+        $id = $req->parametreChemin('id');
+
+        (new SacService())->changerCategorie(
+            $id,
+            $req->choix('categorie', ['standard', 'russell']),
+            $this->utilisateurId($req),
+            $req->texteOptionnel('motif')
+        );
+
+        return ['sac_id' => $id];
+    }
+
     /**
      * SacService ne vérifie pas le site pour ces deux opérations : le
      * contrôle est fait ici pour qu'un responsable ne touche que les

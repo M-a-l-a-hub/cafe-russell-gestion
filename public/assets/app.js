@@ -1325,7 +1325,13 @@ async function chargerSacs() {
             ${LIBELLES_STATUT_SAC[s.statut] || s.statut}
           </span>
         </div>
-        <div class="ligne"><span>Catégorie</span><span>${s.categorie === 'russell' ? 'Russell' : 'standard'}</span></div>
+        <div class="ligne">
+          <span>Catégorie</span>
+          <span>
+            ${s.categorie === 'russell' ? 'Russell' : 'standard'}
+            ${etat.utilisateur.role === 'super_admin' ? `<button class="secondaire" style="padding:2px 8px;margin-left:6px;font-size:.78rem" data-categorie="${s.id}" data-categorie-actuelle="${s.categorie}">changer</button>` : ''}
+          </span>
+        </div>
         ${s.motif_indisponibilite ? `<div class="ligne"><span>Motif</span><span>${esc(s.motif_indisponibilite)}</span></div>` : ''}
         <div class="barre-actions">
           ${s.statut === 'indisponible'
@@ -1368,6 +1374,54 @@ async function chargerSacs() {
 
   document.querySelectorAll('[data-deplacer]').forEach((b) => {
     b.addEventListener('click', () => ouvrirModaleDeplacerSac(Number(b.dataset.deplacer)));
+  });
+
+  document.querySelectorAll('[data-categorie]').forEach((b) => {
+    b.addEventListener('click', () => {
+      ouvrirModaleCategorieSac(Number(b.dataset.categorie), b.dataset.categorieActuelle);
+    });
+  });
+}
+
+function ouvrirModaleCategorieSac(sacId, categorieActuelle) {
+  ouvrirModale('Changer la catégorie du sac', `
+    <form id="form-categorie-sac">
+      <p style="color:var(--brun-500);font-size:.9rem">
+        Ce changement ne concerne que les prochaines activités avec ce sac : celles déjà enregistrées gardent leur catégorie d'origine.
+      </p>
+      <div class="champ">
+        <label>Catégorie</label>
+        <select id="cs-categorie">
+          <option value="standard" ${categorieActuelle === 'standard' ? 'selected' : ''}>Standard</option>
+          <option value="russell" ${categorieActuelle === 'russell' ? 'selected' : ''}>Russell</option>
+        </select>
+      </div>
+      <div class="champ">
+        <label>Motif (optionnel)</label>
+        <input type="text" id="cs-motif" maxlength="255">
+      </div>
+      <p class="message-erreur" id="erreur-cs" hidden></p>
+      <button class="principal" type="submit">Enregistrer</button>
+    </form>
+  `);
+
+  document.getElementById('form-categorie-sac').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+
+    try {
+      await api(`/api/sacs/${sacId}/categorie`, {
+        method: 'POST',
+        corps: {
+          categorie: document.getElementById('cs-categorie').value,
+          motif: document.getElementById('cs-motif').value.trim() || null,
+        },
+      });
+      fermerModale();
+      await chargerSacs();
+    } catch (e) {
+      document.getElementById('erreur-cs').textContent = e.message;
+      document.getElementById('erreur-cs').hidden = false;
+    }
   });
 }
 

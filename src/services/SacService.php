@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/ServiceBase.php';
 require_once __DIR__ . '/AuditService.php';
+require_once __DIR__ . '/AutorisationService.php';
 
 /**
  * Création des sacs et changement de leur disponibilité.
@@ -40,15 +41,6 @@ class SacService extends ServiceBase
         if (!in_array($categorie, self::CATEGORIES, true)) {
             throw new InvalidArgumentException(
                 "Catégorie invalide : {$categorie} (valeurs possibles : standard, russell)."
-            );
-        }
-
-        $numeroRussell = in_array($numero, ['19', '66'], true);
-
-        if ($numeroRussell !== ($categorie === 'russell')) {
-            throw new InvalidArgumentException(
-                'Les sacs 19 et 66 sont réservés à Russell ; les autres sacs '
-                . 'appartiennent à la catégorie standard.'
             );
         }
 
@@ -220,11 +212,61 @@ class SacService extends ServiceBase
         );
     }
 
+    /**
+     * Change la catégorie d'un sac. Réservé à Russell : la catégorie
+     * décide qui touche le bénéfice des activités faites avec ce sac
+     * (TarifService n'intervient pas ici, c'est juste une affectation).
+     * N'affecte jamais les activités déjà enregistrées : chacune garde
+     * sa propre catégorie, figée au moment où elle a eu lieu (trigger
+     * de la migration 026).
+     */
+    public function changerCategorie(
+        int $sacId,
+        string $categorie,
+        int $userId,
+        ?string $motif = null
+    ): void {
+        if (!in_array($categorie, self::CATEGORIES, true)) {
+            throw new InvalidArgumentException(
+                "Catégorie invalide : {$categorie} (valeurs possibles : standard, russell)."
+            );
+        }
+
+        $this->transaction(
+            function () use ($sacId, $categorie, $userId, $motif): void {
+                (new AutorisationService($this->db))->verifierSuperAdministrateur($userId);
+
+                $sac = $this->verrouillerSac($sacId);
+
+                if ($sac['categorie'] === $categorie) {
+                    return;
+                }
+
+                $stmt = $this->db->prepare(
+                    "UPDATE sacs SET categorie = :categorie, updated_at = NOW() WHERE id = :id"
+                );
+                $stmt->execute(['categorie' => $categorie, 'id' => $sacId]);
+
+                AuditService::enregistrer(
+                    $this->db,
+                    $userId,
+                    'sac_categorie_modifiee',
+                    'sacs',
+                    $sacId,
+                    (int) $sac['site_id'],
+                    ['categorie' => $sac['categorie']],
+                    ['categorie' => $categorie],
+                    $motif
+                );
+            }
+        );
+    }
+
     private function verrouillerSac(int $sacId): array
     {
         $sac = $this->fetchOne(
             "
-            SELECT id, site_id, numero, statut, motif_indisponibilite
+            SELECT id, site_id, numero, statut, motif_indisponibilite, categorie
             FROM sacs
             WHERE id = :id
             FOR UPDATE

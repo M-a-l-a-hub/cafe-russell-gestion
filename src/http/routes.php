@@ -94,5 +94,6 @@ $r->post('/api/sacs', [$sacs, 'creer']);
 $r->post('/api/sacs/{id}/indisponibilite', [$sacs, 'rendreIndisponible']);
 $r->post('/api/sacs/{id}/disponibilite', [$sacs, 'rendreDisponible']);
 $r->post('/api/sacs/{id}/deplacement', [$sacs, 'deplacer']);
+$r->post('/api/sacs/{id}/categorie', [$sacs, 'changerCategorie'], $russell);
 
 return $r;
