@@ -90,42 +90,34 @@ class JourneeService
             RETURNING id
         ";
 
-        $this->db->beginTransaction();
+        return $this->enTransaction(
+            function () use ($sql, $siteId, $date, $userId, $note): int {
+                $stmt = $this->db->prepare($sql);
 
-        try {
-            $stmt = $this->db->prepare($sql);
+                $stmt->execute([
+                    'site_id' => $siteId,
+                    'date_jour' => $date,
+                    'ouverte_par' => $userId,
+                    'note_ouverture' => $note
+                ]);
 
-            $stmt->execute([
-                'site_id' => $siteId,
-                'date_jour' => $date,
-                'ouverte_par' => $userId,
-                'note_ouverture' => $note
-            ]);
+                $journeeId = (int) $stmt->fetchColumn();
 
-            $journeeId = (int) $stmt->fetchColumn();
+                AuditService::enregistrer(
+                    $this->db,
+                    $userId,
+                    'journee_ouverte',
+                    'journees',
+                    $journeeId,
+                    $siteId,
+                    null,
+                    ['statut' => 'ouverte', 'date_jour' => $date],
+                    $note
+                );
 
-            AuditService::enregistrer(
-                $this->db,
-                $userId,
-                'journee_ouverte',
-                'journees',
-                $journeeId,
-                $siteId,
-                null,
-                ['statut' => 'ouverte', 'date_jour' => $date],
-                $note
-            );
-
-            $this->db->commit();
-
-            return $journeeId;
-        } catch (Throwable $e) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
+                return $journeeId;
             }
-
-            throw $e;
-        }
+        );
     }
 
     /**
@@ -189,43 +181,35 @@ class JourneeService
               AND statut = 'ouverte'
         ";
 
-        $this->db->beginTransaction();
+        $this->enTransaction(
+            function () use ($sql, $journeeId, $userId, $note, $journee): void {
+                $stmt = $this->db->prepare($sql);
 
-        try {
-            $stmt = $this->db->prepare($sql);
+                $stmt->execute([
+                    'id' => $journeeId,
+                    'cloturee_par' => $userId,
+                    'note_cloture' => $note
+                ]);
 
-            $stmt->execute([
-                'id' => $journeeId,
-                'cloturee_par' => $userId,
-                'note_cloture' => $note
-            ]);
+                if ($stmt->rowCount() !== 1) {
+                    throw new RuntimeException(
+                        'La journée n’a pas pu être clôturée.'
+                    );
+                }
 
-            if ($stmt->rowCount() !== 1) {
-                throw new RuntimeException(
-                    'La journée n’a pas pu être clôturée.'
+                AuditService::enregistrer(
+                    $this->db,
+                    $userId,
+                    'journee_cloturee',
+                    'journees',
+                    $journeeId,
+                    (int) $journee['site_id'],
+                    ['statut' => 'ouverte'],
+                    ['statut' => 'cloturee'],
+                    $note
                 );
             }
-
-            AuditService::enregistrer(
-                $this->db,
-                $userId,
-                'journee_cloturee',
-                'journees',
-                $journeeId,
-                (int) $journee['site_id'],
-                ['statut' => 'ouverte'],
-                ['statut' => 'cloturee'],
-                $note
-            );
-
-            $this->db->commit();
-        } catch (Throwable $e) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
-            }
-
-            throw $e;
-        }
+        );
     }
 
     /**
@@ -279,52 +263,73 @@ class JourneeService
             );
         }
 
+        $this->enTransaction(
+            function () use ($journeeId, $userId, $raison, $journee): void {
+                $sql = "
+                    UPDATE journees
+                    SET
+                        statut = 'ouverte',
+                        cloturee_par = NULL,
+                        date_cloture = NULL,
+                        note_cloture = NULL,
+                        updated_at = NOW()
+                    WHERE id = :id
+                      AND statut = 'cloturee'
+                ";
+
+                $stmt = $this->db->prepare($sql);
+
+                $stmt->execute([
+                    'id' => $journeeId
+                ]);
+
+                if ($stmt->rowCount() !== 1) {
+                    throw new RuntimeException(
+                        'La journée n’a pas pu être rouverte.'
+                    );
+                }
+
+                // La réouverture doit rester traçable : l'UPDATE efface
+                // les informations de clôture, l'audit les conserve.
+                AuditService::enregistrer(
+                    $this->db,
+                    $userId,
+                    'journee_rouverte',
+                    'journees',
+                    $journeeId,
+                    (int) $journee['site_id'],
+                    [
+                        'statut' => 'cloturee',
+                        'cloturee_par' => $journee['cloturee_par'],
+                        'date_cloture' => $journee['date_cloture'],
+                    ],
+                    ['statut' => 'ouverte'],
+                    trim($raison)
+                );
+            }
+        );
+    }
+
+    /**
+     * Exécute $callback dans une transaction, ou rejoint celle déjà
+     * ouverte (même règle que ServiceBase::transaction) : c'est ce qui
+     * permet d'appeler ce service depuis une requête rejouable, déjà
+     * enveloppée dans une transaction par Application.
+     */
+    private function enTransaction(callable $callback): mixed
+    {
+        if ($this->db->inTransaction()) {
+            return $callback();
+        }
+
         $this->db->beginTransaction();
 
         try {
-            $sql = "
-                UPDATE journees
-                SET
-                    statut = 'ouverte',
-                    cloturee_par = NULL,
-                    date_cloture = NULL,
-                    note_cloture = NULL,
-                    updated_at = NOW()
-                WHERE id = :id
-                  AND statut = 'cloturee'
-            ";
-
-            $stmt = $this->db->prepare($sql);
-
-            $stmt->execute([
-                'id' => $journeeId
-            ]);
-
-            if ($stmt->rowCount() !== 1) {
-                throw new RuntimeException(
-                    'La journée n’a pas pu être rouverte.'
-                );
-            }
-
-            // La réouverture doit rester traçable : l'UPDATE efface
-            // les informations de clôture, l'audit les conserve.
-            AuditService::enregistrer(
-                $this->db,
-                $userId,
-                'journee_rouverte',
-                'journees',
-                $journeeId,
-                (int) $journee['site_id'],
-                [
-                    'statut' => 'cloturee',
-                    'cloturee_par' => $journee['cloturee_par'],
-                    'date_cloture' => $journee['date_cloture'],
-                ],
-                ['statut' => 'ouverte'],
-                trim($raison)
-            );
+            $resultat = $callback();
 
             $this->db->commit();
+
+            return $resultat;
         } catch (Throwable $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();

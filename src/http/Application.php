@@ -98,17 +98,28 @@ final class Application
      * (en-tête Idempotency-Key) n'est exécutée qu'une fois. Un rejeu
      * (réponse perdue, réseau instable) renvoie la réponse d'origine.
      * Seules les réussites sont mémorisées : un refus peut être retenté.
+     *
+     * Tout se passe dans UNE transaction : le verrou (lié à la transaction,
+     * donc compatible avec le pooler Neon), la saisie métier et la clé
+     * d'idempotence sont validés ensemble ou annulés ensemble. Il n'existe
+     * plus de moment où la saisie est enregistrée sans sa clé, qui
+     * permettrait un doublon au rejeu.
      */
     private function executerUneSeuleFois(string $cle, array $route, Requete $requete): void
     {
         $db = getDatabaseConnection();
         $userId = (int) $requete->utilisateur['id'];
+        $tamponOuvert = false;
 
-        // Deux requêtes simultanées avec la même clé passent l'une après l'autre.
-        $verrou = $db->prepare('SELECT pg_advisory_lock(hashtext(:cle))');
-        $verrou->execute(['cle' => $cle]);
+        $db->beginTransaction();
 
         try {
+            // Deux requêtes simultanées avec la même clé passent l'une après
+            // l'autre ; le verrou est relâché automatiquement au COMMIT ou
+            // au ROLLBACK, jamais oublié sur une connexion du pooler.
+            $verrou = $db->prepare('SELECT pg_advisory_xact_lock(hashtext(:cle))');
+            $verrou->execute(['cle' => $cle]);
+
             $stmt = $db->prepare(
                 'SELECT user_id, statut_http, reponse FROM requetes_idempotentes WHERE cle = :cle'
             );
@@ -120,6 +131,8 @@ final class Application
                     throw new HttpException(409, 'cle_deja_utilisee', 'Clé d’idempotence déjà utilisée.');
                 }
 
+                $db->rollBack();
+
                 http_response_code((int) $existant['statut_http']);
                 header('Content-Type: application/json; charset=utf-8');
                 header('Cache-Control: no-store');
@@ -130,20 +143,13 @@ final class Application
             }
 
             ob_start();
+            $tamponOuvert = true;
 
-            try {
-                $this->executerGestionnaire($route, $requete);
-            } catch (Throwable $e) {
-                ob_end_clean();
-
-                throw $e;
-            }
+            $this->executerGestionnaire($route, $requete);
 
             $corps = (string) ob_get_contents();
             $statut = http_response_code();
             $statut = is_int($statut) ? $statut : 200;
-
-            ob_end_flush();
 
             if ($statut >= 200 && $statut < 300) {
                 $insertion = $db->prepare(
@@ -160,9 +166,44 @@ final class Application
                     'reponse' => $corps,
                 ]);
             }
-        } finally {
-            $deverrou = $db->prepare('SELECT pg_advisory_unlock(hashtext(:cle))');
-            $deverrou->execute(['cle' => $cle]);
+
+            $db->commit();
+
+            // La réponse n'est envoyée qu'une fois la saisie réellement validée.
+            ob_end_flush();
+            $tamponOuvert = false;
+
+            $this->purgerAnciennesCles($db);
+        } catch (Throwable $e) {
+            if ($tamponOuvert) {
+                ob_end_clean();
+            }
+
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Supprime les clés d'idempotence de plus de 30 jours. Exécuté en
+     * moyenne une fois sur 50 requêtes à clé : pas de tâche planifiée à
+     * installer, et un échec ici ne doit jamais gêner la requête en cours.
+     */
+    private function purgerAnciennesCles(PDO $db): void
+    {
+        if (random_int(1, 50) !== 1) {
+            return;
+        }
+
+        try {
+            $db->exec(
+                "DELETE FROM requetes_idempotentes WHERE created_at < NOW() - INTERVAL '30 days'"
+            );
+        } catch (Throwable $e) {
+            error_log('Purge des clés d’idempotence impossible : ' . $e->getMessage());
         }
     }
 
