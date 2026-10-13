@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/HttpException.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/SessionBaseDeDonnees.php';
 
 /**
  * Session de connexion : cookie HttpOnly + SameSite=Strict, jeton CSRF
@@ -28,6 +29,9 @@ final class SessionHttp
         ini_set('session.use_strict_mode', '1');
         ini_set('session.use_only_cookies', '1');
         ini_set('session.gc_maxlifetime', (string) self::INACTIVITE_MAX);
+
+        // Sessions en base : le disque de Render est éphémère.
+        session_set_save_handler(new SessionBaseDeDonnees(self::INACTIVITE_MAX), true);
 
         session_name(self::NOM);
         session_set_cookie_params([

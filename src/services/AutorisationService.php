@@ -5,9 +5,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/AccesRefuseException.php';
 
-use PDO;
-use RuntimeException;
-
 /** Vérifie les droits d'accès aux sites et aux opérations globales. */
 class AutorisationService
 {
