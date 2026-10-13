@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../ControleurBase.php';
 require_once __DIR__ . '/../../services/RapportService.php';
+require_once __DIR__ . '/../../models/Depense.php';
 
 /**
  * Vue d'ensemble multi-sites pour Russell : statut du jour par site,
@@ -97,6 +98,34 @@ final class TableauDeBordControleur extends ControleurBase
             $totaux[$cle] = round($valeur, 2);
         }
 
-        return ['date' => $date, 'sites' => $resultats, 'totaux' => $totaux];
+        /*
+         * Consolidation journalière (NON intrusif) :
+         * - depenses_generales : dépenses globales (site_id IS NULL) sur la période [date, date+1)
+         * - benefice_entreprise_net_consolide = somme(benefice_entreprise) - somme(depenses_site) - depenses_generales
+         *
+         * Le bénéfice Russell demeure inchangé et n'est pas diminué par depenses_generales.
+         */
+        $dateDebut = $date;
+        $dateFin = (new \DateTime($date))->modify('+1 day')->format('Y-m-d');
+
+        $depenseModel = new Depense();
+        $depensesGenerales = (float) $depenseModel->getTotalGlobalAndPeriod($dateDebut, $dateFin);
+
+        $beneficeEntrepriseNetConsolide = round(
+            $totaux['benefice_entreprise'] - $totaux['depenses_site'] - $depensesGenerales,
+            2
+        );
+
+        $consolidation = [
+            'depenses_generales' => round($depensesGenerales, 2),
+            'benefice_entreprise_net_consolide' => $beneficeEntrepriseNetConsolide,
+        ];
+
+        return [
+            'date' => $date,
+            'sites' => $resultats,
+            'totaux' => $totaux,
+            'consolidation' => $consolidation,
+        ];
     }
 }

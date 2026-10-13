@@ -42,6 +42,9 @@ class RapportService extends ServiceBase
             'benefice_russell' => 0.0,
             'depenses_site' => 0.0,
             'benefice_apres_depenses_site' => 0.0,
+            // Champ additionnel demandé : bénéfice net de l'entreprise PAR SITE
+            // selon la règle : benefice_entreprise - depenses_site
+            'benefice_entreprise_net_par_site' => 0.0,
             'ecarts' => [],
         ];
 
@@ -82,6 +85,12 @@ class RapportService extends ServiceBase
             $resume['benefice_activites'] - $resume['depenses_site'],
             2
         );
+        // Nouveau calcul minimal et non intrusif : bénéfice net entreprise par site
+        // (utilise les valeurs déjà calculées ; ne modifie pas benefice_apres_depenses_site)
+        $resume['benefice_entreprise_net_par_site'] = round(
+            $resume['benefice_entreprise'] - $resume['depenses_site'],
+            2
+        );
         $resume['ecarts'] = $this->fetchAllRows(
             "
             SELECT cf.*
@@ -96,6 +105,8 @@ class RapportService extends ServiceBase
         foreach (['ventes', 'transport', 'commissions', 'consommables', 'benefice_activites', 'benefice_entreprise', 'benefice_russell'] as $cle) {
             $resume[$cle] = round($resume[$cle], 2);
         }
+        // Arrondi cohérent pour le champ ajouté
+        $resume['benefice_entreprise_net_par_site'] = round($resume['benefice_entreprise_net_par_site'], 2);
 
         return $resume;
     }
