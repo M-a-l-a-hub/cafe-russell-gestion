@@ -92,7 +92,7 @@ final class SiteService extends ServiceBase
                      WHERE site_id = :site_id
                        AND type = 'principal'
                        AND actif = TRUE
-                       AND (:affectation_id IS NULL OR id <> :affectation_id)"
+                       AND id <> COALESCE(CAST(:affectation_id AS BIGINT), 0)"
                 )->execute([
                     'site_id' => $siteId,
                     'affectation_id' => $affectationExistante['id'] ?? null,
