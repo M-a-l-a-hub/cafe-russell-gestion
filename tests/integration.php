@@ -8,7 +8,7 @@ require_once __DIR__ . '/../src/services/AutorisationService.php';
 
 function check(bool $ok, string $message): void {
     if (!$ok) { throw new RuntimeException("ÉCHEC: {$message}"); }
-    echo "OK: {$message}\\n";
+    echo "OK: {$message}\n";
 }
 function expectException(callable $fn, string $class, string $message): void {
     try { $fn(); } catch (Throwable $e) {
@@ -212,4 +212,4 @@ $report = (new RapportService())->pourJournee($dayA,$admin);
 check((float)$report['benefice_entreprise']===6000.0 && (float)$report['benefice_russell']===4500.0, 'RapportService sépare bénéfice entreprise et bénéfice Russell');
 check((float)$report['depenses_site']===5000.0 && (float)$report['benefice_apres_depenses_site']===1000.0, 'dépenses du site réduisent le bénéfice entreprise uniquement');
 
-echo "\\nSUCCÈS: tous les tests de services PHP et PostgreSQL ont réussi.\\n";
+echo "\nSUCCÈS: tous les tests de services PHP et PostgreSQL ont réussi.\n";
