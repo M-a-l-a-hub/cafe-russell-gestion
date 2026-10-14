@@ -26,6 +26,9 @@ final class TableauDeBordControleur extends ControleurBase
             'benefice_entreprise' => 0.0,
             'benefice_russell' => 0.0,
             'depenses_site' => 0.0,
+            'depenses_generales' => 0.0,
+            'depenses_sites_non_journee' => 0.0,
+            'benefice_entreprise_net_consolide' => 0.0,
             'vendeurs_site' => 0,
         ];
 
@@ -61,6 +64,8 @@ final class TableauDeBordControleur extends ControleurBase
                 $totaux['ventes'] += $rapport['ventes'];
                 $totaux['benefice_entreprise'] += $rapport['benefice_entreprise'];
                 $totaux['benefice_russell'] += $rapport['benefice_russell'];
+                // Cette somme sert uniquement à comparer les rapports de journée
+                // avec toutes les dépenses de site enregistrées pour la date.
                 $totaux['depenses_site'] += $rapport['depenses_site'];
                 $totaux['vendeurs_site'] += $rapport['vendeurs'];
             }
@@ -92,6 +97,52 @@ final class TableauDeBordControleur extends ControleurBase
 
             $resultats[] = $entree;
         }
+
+        // Consolidation depuis la table des dépenses : inclut aussi les sites
+        // inactifs et les dépenses qui n'ont pas de rapport de journée associé.
+        $depensesSiteBase = $this->uneLigne(
+            '
+            SELECT COALESCE(SUM(montant), 0) AS total
+            FROM depenses
+            WHERE site_id IS NOT NULL AND date_depense = :date
+            ',
+            ['date' => $date]
+        );
+        $depensesSiteBaseTotal = round((float) $depensesSiteBase['total'], 2);
+        $depensesSiteRapports = round((float) $totaux['depenses_site'], 2);
+        $totaux['depenses_sites_non_journee'] = round(
+            $depensesSiteBaseTotal - $depensesSiteRapports,
+            2
+        );
+        $totaux['depenses_site'] = $depensesSiteBaseTotal;
+
+        if ($totaux['depenses_sites_non_journee'] < 0) {
+            error_log(
+                sprintf(
+                    'Incohérence des dépenses du tableau de bord pour %s : total base %.2f FC, total rapports %.2f FC, différence %.2f FC.',
+                    $date,
+                    $depensesSiteBaseTotal,
+                    $depensesSiteRapports,
+                    $totaux['depenses_sites_non_journee']
+                )
+            );
+        }
+
+        $depensesGenerales = $this->uneLigne(
+            '
+            SELECT COALESCE(SUM(montant), 0) AS total
+            FROM depenses
+            WHERE site_id IS NULL AND date_depense = :date
+            ',
+            ['date' => $date]
+        );
+        $totaux['depenses_generales'] = round((float) $depensesGenerales['total'], 2);
+        $totaux['benefice_entreprise_net_consolide'] = round(
+            (float) $totaux['benefice_entreprise']
+                - (float) $totaux['depenses_site']
+                - (float) $totaux['depenses_generales'],
+            2
+        );
 
         foreach ($totaux as $cle => $valeur) {
             $totaux[$cle] = round($valeur, 2);
