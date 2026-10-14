@@ -53,6 +53,10 @@ CREATE UNIQUE INDEX uq_site_responsable_principal_actif ON site_responsables(sit
  WHERE type='principal' AND actif=TRUE;
 CREATE UNIQUE INDEX uq_site_responsable_user_site_actif ON site_responsables(site_id,user_id)
  WHERE actif=TRUE;
+CREATE TABLE sessions (
+ id VARCHAR(128) PRIMARY KEY, donnees TEXT NOT NULL,
+ derniere_activite TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 CREATE TABLE tentatives_connexion (
  id BIGSERIAL PRIMARY KEY, telephone VARCHAR(30) NOT NULL, adresse_ip VARCHAR(45) NOT NULL,
  reussie BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
