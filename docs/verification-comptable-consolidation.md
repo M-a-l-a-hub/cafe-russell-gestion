@@ -45,6 +45,19 @@ Les retours sont déjà inclus dans les quantités ci-dessus. Le CA et la commis
 6. Avec une activité fictive sur un site désactivé à la date testée, vérifier que son bénéfice entre dans les totaux consolidés même si sa carte opérationnelle reste masquée.
 7. Vérifier qu'aucune donnée réelle de production n'est utilisée dans cette recette.
 
+## Vérification manuelle — responsables et connexion
+
+1. Créer un responsable avec un mot de passe de 10 caractères minimum ; vérifier que le formulaire et le serveur appliquent la même règle.
+2. Essayer un téléphone déjà utilisé : la création doit être refusée.
+3. Connecter le responsable avec son téléphone et son mot de passe : la session doit s'ouvrir et le mot de passe ne doit jamais être renvoyé dans la réponse.
+4. Connecter un compte avec un mauvais mot de passe ou désactivé : l'accès doit être refusé avec un message générique.
+5. Affecter le responsable comme principal à un site actif ; après connexion, vérifier que ce site apparaît dans sa liste.
+6. Vérifier qu'un responsable ne peut pas consulter ni modifier un autre site en appelant directement son identifiant d'API.
+7. Affecter un adjoint et vérifier qu'il n'écrase pas l'affectation du principal.
+8. Réaffecter un principal : l'ancienne affectation doit devenir inactive et le nouvel enregistrement doit être actif.
+9. Désactiver un site : ses affectations actives doivent être désactivées et ses responsables ne doivent plus le voir.
+10. Créer un responsable sans l'affecter à un site : la connexion peut réussir, mais l'application doit indiquer qu'aucun site n'est accessible.
+
 ## Limite
 
 Ce document est un scénario de recette chiffré, pas un test automatisé exécuté contre les services PHP. Les résultats attendus sont calculés à partir des règles comptables décrites ; une exécution applicative nécessite un environnement de test isolé avec les migrations et une base de test.
