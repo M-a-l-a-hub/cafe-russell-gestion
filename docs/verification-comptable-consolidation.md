@@ -42,7 +42,8 @@ Les retours sont déjà inclus dans les quantités ci-dessus. Le CA et la commis
 3. Vérifier que le rapport attribue 9 000 FC à l'entreprise et 4 500 FC à Russell.
 4. Vérifier que le tableau de bord soustrait les 8 000 FC de dépenses des sites et les 2 000 FC de dépenses générales du bénéfice entreprise seulement.
 5. Vérifier qu'une dépense de site sans journée associée reste incluse dans le total des dépenses du site pour la date choisie.
-6. Vérifier qu'aucune donnée réelle de production n'est utilisée dans cette recette.
+6. Avec une activité fictive sur un site désactivé à la date testée, vérifier que son bénéfice entre dans les totaux consolidés même si sa carte opérationnelle reste masquée.
+7. Vérifier qu'aucune donnée réelle de production n'est utilisée dans cette recette.
 
 ## Limite
 
