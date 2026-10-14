@@ -396,12 +396,19 @@ abstract class ServiceBase
             return;
         }
 
-        $nouvelleCommission = round($nouveauCa * (float) $commission['taux'] / 100, 2);
+        // Règle métier fixe : la commission vendeur reste à 25 %, y compris pour les sacs Russell.
+        $tauxCommission = 25.00;
+        $nouvelleCommission = round($nouveauCa * $tauxCommission / 100, 2);
 
         $stmt = $this->db->prepare(
-            'UPDATE commissions SET ca = :ca, montant = :montant WHERE id = :id'
+            'UPDATE commissions SET ca = :ca, taux = :taux, montant = :montant WHERE id = :id'
         );
-        $stmt->execute(['ca' => $nouveauCa, 'montant' => $nouvelleCommission, 'id' => $commission['id']]);
+        $stmt->execute([
+            'ca' => $nouveauCa,
+            'taux' => $tauxCommission,
+            'montant' => $nouvelleCommission,
+            'id' => $commission['id'],
+        ]);
 
         $nouvelEcart = round((float) $controle['montant_remis'] - $nouveauCa, 2);
         $nouveauStatut = $nouvelEcart === 0.0 ? 'aucun_ecart' : 'ecart_a_expliquer';
@@ -440,6 +447,7 @@ abstract class ServiceBase
                 'statut' => $controle['statut'],
             ],
             [
+                'commission_taux' => $tauxCommission,
                 'commission_montant' => $nouvelleCommission,
                 'ca_theorique' => $nouveauCa,
                 'ecart' => $nouvelEcart,

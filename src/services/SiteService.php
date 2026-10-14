@@ -57,22 +57,99 @@ final class SiteService extends ServiceBase
         if (!in_array($type, ['principal', 'adjoint'], true)) {
             throw new InvalidArgumentException('Le type de responsable est invalide.');
         }
-        if ($this->fetchOne('SELECT id FROM sites WHERE id = :id AND actif = TRUE', ['id' => $siteId]) === null) {
-            throw new RuntimeException('Site introuvable ou désactivé.');
-        }
-        if ($this->fetchOne("SELECT id FROM users WHERE id = :id AND role = 'responsable' AND actif = TRUE", ['id' => $responsableId]) === null) {
-            throw new RuntimeException('Responsable introuvable ou désactivé.');
-        }
 
         return $this->transaction(function () use ($siteId, $responsableId, $type, $userId): int {
-            if ($type === 'principal') {
-                $this->db->prepare("UPDATE site_responsables SET actif = FALSE, date_fin = CURRENT_DATE, updated_at = NOW() WHERE site_id = :site_id AND type = 'principal' AND actif = TRUE")->execute(['site_id' => $siteId]);
+            // Valide les deux entités dans la transaction pour éviter une
+            // affectation fondée sur un compte/site désactivé entre-temps.
+            if ($this->fetchOne(
+                'SELECT id FROM sites WHERE id = :id AND actif = TRUE FOR UPDATE',
+                ['id' => $siteId]
+            ) === null) {
+                throw new RuntimeException('Site introuvable ou désactivé.');
             }
 
-            $stmt = $this->db->prepare("INSERT INTO site_responsables (site_id, user_id, type, date_debut) VALUES (:site_id, :user_id, :type, CURRENT_DATE) RETURNING id");
-            $stmt->execute(['site_id' => $siteId, 'user_id' => $responsableId, 'type' => $type]);
+            if ($this->fetchOne(
+                "SELECT id FROM users WHERE id = :id AND role = 'responsable' AND actif = TRUE FOR UPDATE",
+                ['id' => $responsableId]
+            ) === null) {
+                throw new RuntimeException('Responsable introuvable ou désactivé.');
+            }
+
+            // Si ce responsable est déjà affecté à ce site, réutilise son
+            // affectation : cela permet notamment de promouvoir un adjoint
+            // en principal sans violer l'unicité (site_id, user_id).
+            $affectationExistante = $this->fetchOne(
+                'SELECT id, type FROM site_responsables
+                 WHERE site_id = :site_id AND user_id = :user_id AND actif = TRUE
+                 FOR UPDATE',
+                ['site_id' => $siteId, 'user_id' => $responsableId]
+            );
+
+            if ($type === 'principal') {
+                $this->db->prepare(
+                    "UPDATE site_responsables
+                     SET actif = FALSE, date_fin = CURRENT_DATE, updated_at = NOW()
+                     WHERE site_id = :site_id
+                       AND type = 'principal'
+                       AND actif = TRUE
+                       AND id <> COALESCE(CAST(:affectation_id AS BIGINT), 0)"
+                )->execute([
+                    'site_id' => $siteId,
+                    'affectation_id' => $affectationExistante['id'] ?? null,
+                ]);
+            }
+
+            if ($affectationExistante !== null) {
+                $affectationId = (int) $affectationExistante['id'];
+                $ancienType = (string) $affectationExistante['type'];
+
+                $this->db->prepare(
+                    'UPDATE site_responsables
+                     SET type = CAST(:type AS responsable_type),
+                         date_fin = NULL,
+                         actif = TRUE,
+                         updated_at = NOW()
+                     WHERE id = :id'
+                )->execute(['type' => $type, 'id' => $affectationId]);
+
+                AuditService::enregistrer(
+                    $this->db,
+                    $userId,
+                    'responsable_affectation_modifiee',
+                    'site_responsables',
+                    $affectationId,
+                    null,
+                    ['site_id' => $siteId, 'responsable_id' => $responsableId, 'type' => $ancienType],
+                    ['site_id' => $siteId, 'responsable_id' => $responsableId, 'type' => $type]
+                );
+
+                return $affectationId;
+            }
+
+            $stmt = $this->db->prepare(
+                'INSERT INTO site_responsables (site_id, user_id, type, date_debut)
+                 VALUES (:site_id, :user_id, CAST(:type AS responsable_type), CURRENT_DATE)
+                 RETURNING id'
+            );
+            $stmt->execute([
+                'site_id' => $siteId,
+                'user_id' => $responsableId,
+                'type' => $type,
+            ]);
+
             $affectationId = (int) $stmt->fetchColumn();
-            AuditService::enregistrer($this->db, $userId, 'responsable_affecte', 'site_responsables', $affectationId, null, null, ['site_id' => $siteId, 'responsable_id' => $responsableId, 'type' => $type]);
+
+            AuditService::enregistrer(
+                $this->db,
+                $userId,
+                'responsable_affecte',
+                'site_responsables',
+                $affectationId,
+                null,
+                null,
+                ['site_id' => $siteId, 'responsable_id' => $responsableId, 'type' => $type]
+            );
+
             return $affectationId;
         });
     }

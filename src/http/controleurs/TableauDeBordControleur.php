@@ -26,6 +26,9 @@ final class TableauDeBordControleur extends ControleurBase
             'benefice_entreprise' => 0.0,
             'benefice_russell' => 0.0,
             'depenses_site' => 0.0,
+            'depenses_generales' => 0.0,
+            'depenses_sites_non_journee' => 0.0,
+            'benefice_entreprise_net_consolide' => 0.0,
             'vendeurs_site' => 0,
         ];
 
@@ -92,6 +95,82 @@ final class TableauDeBordControleur extends ControleurBase
 
             $resultats[] = $entree;
         }
+
+        // Les sites inactifs restent absents des cartes opérationnelles,
+        // mais leurs activités du jour doivent compter dans les totaux consolidés.
+        $journeesSitesInactifs = $this->lignes(
+            "
+            SELECT j.id
+            FROM journees j
+            INNER JOIN sites s ON s.id = j.site_id
+            WHERE s.actif = FALSE AND j.date_jour = :date
+            ORDER BY j.site_id
+            ",
+            ['date' => $date]
+        );
+
+        foreach ($journeesSitesInactifs as $journeeInactive) {
+            $rapport = $rapportService->pourJournee(
+                (int) $journeeInactive['id'],
+                $userId
+            );
+
+            $totaux['ventes'] += $rapport['ventes'];
+            $totaux['benefice_entreprise'] += $rapport['benefice_entreprise'];
+            $totaux['benefice_russell'] += $rapport['benefice_russell'];
+            $totaux['vendeurs_site'] += $rapport['vendeurs'];
+        }
+
+        // Consolidation depuis la table des dépenses : inclut aussi les sites
+        // inactifs et les dépenses qui n'ont pas de rapport de journée associé.
+        $depensesSiteBase = $this->uneLigne(
+            "
+            SELECT COALESCE(SUM(montant), 0) AS total
+            FROM depenses
+            WHERE site_id IS NOT NULL AND date_depense = :date
+            ",
+            ['date' => $date]
+        );
+        $depensesSiteBaseTotal = round((float) $depensesSiteBase['total'], 2);
+        $totaux['depenses_site'] = $depensesSiteBaseTotal;
+
+        // Les dépenses sans journée sont identifiées directement, sans comparer
+        // les totaux des rapports (qui excluent les sites inactifs du tableau).
+        $depensesSansJournee = $this->uneLigne(
+            "
+            SELECT COALESCE(SUM(d.montant), 0) AS total
+            FROM depenses d
+            WHERE d.site_id IS NOT NULL
+              AND d.date_depense = :date
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM journees j
+                  WHERE j.site_id = d.site_id
+                    AND j.date_jour = d.date_depense
+              )
+            ",
+            ['date' => $date]
+        );
+        $totaux['depenses_sites_non_journee'] = round(
+            (float) $depensesSansJournee['total'],
+            2
+        );
+
+        $depensesGenerales = $this->uneLigne(
+            "
+            SELECT COALESCE(SUM(montant), 0) AS total
+            FROM depenses
+            WHERE site_id IS NULL AND date_depense = :date
+            ",
+            ['date' => $date]
+        );
+        $totaux['depenses_generales'] = round((float) $depensesGenerales['total'], 2);
+        $totaux['benefice_entreprise_net_consolide'] = round(
+            (float) $totaux['benefice_entreprise']
+                - (float) $totaux['depenses_site']
+                - (float) $totaux['depenses_generales'],
+            2
+        );
 
         foreach ($totaux as $cle => $valeur) {
             $totaux[$cle] = round($valeur, 2);

@@ -1,0 +1,74 @@
+name: Tests integration PHP + PostgreSQL
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, fix/consolidation-depenses-site]
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: cafe_russell_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d cafe_russell_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://test:test@127.0.0.1:5432/cafe_russell_test?sslmode=disable
+      DB_EMULATE_PREPARES: "true"
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+      - name: Installer PHP 8.3 et extensions PostgreSQL
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo_pgsql
+          coverage: none
+      - name: Installer les dépendances PHP
+        run: composer install --no-interaction --prefer-dist
+      - name: Vérifier la syntaxe JavaScript
+        run: node --check public/assets/app.js
+      - name: Exécuter les tests d’intégration
+        run: php tests/integration.php
+      - name: Démarrer le serveur HTTP de test
+        run: |
+          php -S 127.0.0.1:18080 -t public tests/http-router.php > /tmp/cafe-russell-http.log 2>&1 &
+          echo $! > /tmp/cafe-russell-http.pid
+          for i in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:18080/api/sante > /tmp/cafe-russell-health.json; then break; fi
+            sleep 1
+          done
+          cat /tmp/cafe-russell-http.log
+          test -s /tmp/cafe-russell-health.json
+          jq -e '.donnees.statut == "ok" or .statut == "ok"' /tmp/cafe-russell-health.json
+      - name: Vérifier session, CSRF et permissions HTTP
+        run: |
+          set -euo pipefail
+          base=http://127.0.0.1:18080
+          test "$(curl -s -o /tmp/moi-anonyme.json -w '%{http_code}' "$base/api/moi")" = "401"
+          login_code=$(curl -sS -c /tmp/cafe-russell.cookies -H 'Content-Type: application/json' -d '{"telephone":"+999100002","mot_de_passe":"Test-Pass-2026!"}' -o /tmp/login.json -w '%{http_code}' "$base/api/login")
+          test "$login_code" = "200"
+          csrf=$(jq -r '.donnees.csrf // .csrf // empty' /tmp/login.json)
+          test -n "$csrf"
+          test "$(curl -sS -b /tmp/cafe-russell.cookies -o /tmp/moi-connecte.json -w '%{http_code}' "$base/api/moi")" = "200"
+          test "$(curl -sS -b /tmp/cafe-russell.cookies -o /tmp/logout-sans-csrf.json -w '%{http_code}' -X POST "$base/api/logout")" = "403"
+          test "$(curl -sS -b /tmp/cafe-russell.cookies -o /tmp/dashboard-responsable.json -w '%{http_code}' "$base/api/tableau-de-bord?date=2026-10-14")" = "403"
+          test "$(curl -sS -b /tmp/cafe-russell.cookies -H "X-CSRF-Token: $csrf" -o /tmp/logout.json -w '%{http_code}' -X POST "$base/api/logout")" = "200"
+          test "$(curl -sS -b /tmp/cafe-russell.cookies -o /tmp/moi-apres-logout.json -w '%{http_code}' "$base/api/moi")" = "401"
+          echo "OK: HTTP santé, session, CSRF, permissions et déconnexion"
+      - name: Arrêter le serveur HTTP de test
+        if: always()
+        run: |
+          if [ -f /tmp/cafe-russell-http.pid ]; then kill "$(cat /tmp/cafe-russell-http.pid)" 2>/dev/null || true; fi

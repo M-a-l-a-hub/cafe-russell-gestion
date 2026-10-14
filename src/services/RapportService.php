@@ -79,7 +79,7 @@ class RapportService extends ServiceBase
         );
         $resume['depenses_site'] = (float) $depenses['total'];
         $resume['benefice_apres_depenses_site'] = round(
-            $resume['benefice_activites'] - $resume['depenses_site'],
+            $resume['benefice_entreprise'] - $resume['depenses_site'],
             2
         );
         $resume['ecarts'] = $this->fetchAllRows(

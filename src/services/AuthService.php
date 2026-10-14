@@ -27,6 +27,13 @@ final class AuthService extends ServiceBase
     {
         $telephone = self::normaliserTelephone($telephone);
 
+        // La connexion est une requête autonome : nettoyer toute transaction
+        // laissée ouverte/avortée sur cette connexion PDO persistante.
+        if ($this->db->inTransaction()) {
+            error_log('[AuthService] transaction résiduelle détectée avant authentification; rollback.');
+            $this->db->rollBack();
+        }
+
         $this->verifierQuota($telephone, $ip);
 
         $user = $this->fetchOne(

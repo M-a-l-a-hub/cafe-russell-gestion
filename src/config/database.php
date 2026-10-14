@@ -85,7 +85,7 @@ function getDatabaseConnection(): PDO
             // (évite DEALLOCATE, qui casse certaines transactions derrière le
             // pooler Neon). Faux par défaut.
             PDO::ATTR_EMULATE_PREPARES => filter_var(
-                $_ENV['DB_EMULATE_PREPARES'] ?? (getenv('DB_EMULATE_PREPARES') ?: 'false'),
+                $_ENV['DB_EMULATE_PREPARES'] ?? (getenv('DB_EMULATE_PREPARES') ?: 'true'),
                 FILTER_VALIDATE_BOOLEAN
             ),
         ]
