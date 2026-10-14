@@ -109,24 +109,29 @@ final class TableauDeBordControleur extends ControleurBase
             ['date' => $date]
         );
         $depensesSiteBaseTotal = round((float) $depensesSiteBase['total'], 2);
-        $depensesSiteRapports = round((float) $totaux['depenses_site'], 2);
-        $totaux['depenses_sites_non_journee'] = round(
-            $depensesSiteBaseTotal - $depensesSiteRapports,
-            2
-        );
         $totaux['depenses_site'] = $depensesSiteBaseTotal;
 
-        if ($totaux['depenses_sites_non_journee'] < 0) {
-            error_log(
-                sprintf(
-                    'Incohérence des dépenses du tableau de bord pour %s : total base %.2f FC, total rapports %.2f FC, différence %.2f FC.',
-                    $date,
-                    $depensesSiteBaseTotal,
-                    $depensesSiteRapports,
-                    $totaux['depenses_sites_non_journee']
-                )
-            );
-        }
+        // Les dépenses sans journée sont identifiées directement, sans comparer
+        // les totaux des rapports (qui excluent les sites inactifs du tableau).
+        $depensesSansJournee = $this->uneLigne(
+            "
+            SELECT COALESCE(SUM(d.montant), 0) AS total
+            FROM depenses d
+            WHERE d.site_id IS NOT NULL
+              AND d.date_depense = :date
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM journees j
+                  WHERE j.site_id = d.site_id
+                    AND j.date_jour = d.date_depense
+              )
+            ",
+            ['date' => $date]
+        );
+        $totaux['depenses_sites_non_journee'] = round(
+            (float) $depensesSansJournee['total'],
+            2
+        );
 
         $depensesGenerales = $this->uneLigne(
             "
