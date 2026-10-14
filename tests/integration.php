@@ -18,7 +18,7 @@ function expectException(callable $fn, string $class, string $message): void {
     throw new RuntimeException("ÉCHEC: exception attendue — {$message}");
 }
 
-$db = getDatabaseConnection();
+$_ENV['DATABASE_URL'] = getenv('DATABASE_URL') ?: '';\nif ($_ENV['DATABASE_URL'] === '') { throw new RuntimeException('DATABASE_URL absente de l’environnement CI.'); }\n\n$db = getDatabaseConnection();
 
 /*
  * Schéma isolé créé dans le PostgreSQL éphémère de GitHub Actions.
