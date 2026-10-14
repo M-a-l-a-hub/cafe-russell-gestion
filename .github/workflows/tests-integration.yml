@@ -1,0 +1,42 @@
+name: Tests integration PHP + PostgreSQL
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, fix/consolidation-depenses-site]
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: cafe_russell_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d cafe_russell_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://test:test@127.0.0.1:5432/cafe_russell_test?sslmode=disable
+      DB_EMULATE_PREPARES: "true"
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+      - name: Installer PHP 8.3 et extensions PostgreSQL
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo_pgsql
+          coverage: none
+      - name: Installer les dépendances PHP
+        run: composer install --no-interaction --prefer-dist
+      - name: Exécuter les tests d’intégration
+        run: php tests/integration.php
