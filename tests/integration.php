@@ -8,7 +8,8 @@ require_once __DIR__ . '/../src/services/AutorisationService.php';
 
 function check(bool $ok, string $message): void {
     if (!$ok) { throw new RuntimeException("ÉCHEC: {$message}"); }
-    echo "OK: {$message}\n";
+    echo "OK: {$message}
+";
 }
 function expectException(callable $fn, string $class, string $message): void {
     try { $fn(); } catch (Throwable $e) {
@@ -18,7 +19,10 @@ function expectException(callable $fn, string $class, string $message): void {
     throw new RuntimeException("ÉCHEC: exception attendue — {$message}");
 }
 
-$_ENV['DATABASE_URL'] = getenv('DATABASE_URL') ?: '';\nif ($_ENV['DATABASE_URL'] === '') { throw new RuntimeException('DATABASE_URL absente de l’environnement CI.'); }\n\n$db = getDatabaseConnection();
+$_ENV['DATABASE_URL'] = getenv('DATABASE_URL') ?: '';
+if ($_ENV['DATABASE_URL'] === '') { throw new RuntimeException('DATABASE_URL absente de l’environnement CI.'); }
+
+$db = getDatabaseConnection();
 
 /*
  * Schéma isolé créé dans le PostgreSQL éphémère de GitHub Actions.
@@ -116,4 +120,6 @@ $siteService->desactiver($siteB, $admin);
 check((int)$db->query("SELECT COUNT(*) FROM site_responsables WHERE site_id={$siteB} AND actif")->fetchColumn() === 0, 'désactivation site clôture ses affectations');
 check((int)$db->query("SELECT COUNT(*) FROM audit_logs WHERE action='site_desactive'")->fetchColumn() === 1, 'désactivation du site inscrite dans le journal d’audit');
 
-echo "\nSUCCÈS: tous les tests de services PHP et PostgreSQL ont réussi.\n";
+echo "
+SUCCÈS: tous les tests de services PHP et PostgreSQL ont réussi.
+";
