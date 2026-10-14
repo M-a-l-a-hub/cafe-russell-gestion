@@ -63,6 +63,63 @@ CREATE TABLE audit_logs (
  enregistrement_id BIGINT NOT NULL, anciennes_valeurs JSONB, nouvelles_valeurs JSONB,
  raison TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE vendeurs (
+ id BIGSERIAL PRIMARY KEY, code VARCHAR(50) NOT NULL, nom VARCHAR(100) NOT NULL,
+ prenom VARCHAR(100), actif BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE TABLE sacs (
+ id BIGSERIAL PRIMARY KEY, site_id BIGINT NOT NULL REFERENCES sites(id),
+ numero INTEGER NOT NULL, statut VARCHAR(30) NOT NULL DEFAULT 'libre',
+ categorie VARCHAR(30) NOT NULL DEFAULT 'entreprise'
+);
+CREATE TABLE journees (
+ id BIGSERIAL PRIMARY KEY, site_id BIGINT NOT NULL REFERENCES sites(id),
+ date_jour DATE NOT NULL, statut VARCHAR(30) NOT NULL DEFAULT 'ouverte'
+);
+CREATE TABLE activites (
+ id BIGSERIAL PRIMARY KEY, journee_id BIGINT NOT NULL REFERENCES journees(id),
+ vendeur_id BIGINT NOT NULL REFERENCES vendeurs(id), sac_id BIGINT NOT NULL REFERENCES sacs(id),
+ periode VARCHAR(20) NOT NULL, statut VARCHAR(30) NOT NULL DEFAULT 'terminee',
+ date_debut TIMESTAMPTZ NOT NULL DEFAULT NOW(), date_fin TIMESTAMPTZ,
+ sac_categorie VARCHAR(30) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE produits (
+ id BIGSERIAL PRIMARY KEY, code VARCHAR(30) NOT NULL, nom VARCHAR(100) NOT NULL,
+ unite VARCHAR(30) NOT NULL DEFAULT 'tasse'
+);
+CREATE TABLE ravitaillements (
+ id BIGSERIAL PRIMARY KEY, activite_id BIGINT NOT NULL REFERENCES activites(id),
+ effectue_par BIGINT NOT NULL REFERENCES users(id), date_heure TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ transport_par_ravitaillement NUMERIC(12,2) NOT NULL DEFAULT 0,
+ note TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE ravitaillement_lignes (
+ id BIGSERIAL PRIMARY KEY, ravitaillement_id BIGINT NOT NULL REFERENCES ravitaillements(id),
+ produit_id BIGINT NOT NULL REFERENCES produits(id), quantite INTEGER NOT NULL,
+ prix_unitaire NUMERIC(12,2) NOT NULL, cout_unitaire NUMERIC(12,2) NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE retours (
+ id BIGSERIAL PRIMARY KEY, activite_id BIGINT NOT NULL REFERENCES activites(id),
+ effectue_par BIGINT NOT NULL REFERENCES users(id), date_heure TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ note TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE retour_lignes (
+ id BIGSERIAL PRIMARY KEY, retour_id BIGINT NOT NULL REFERENCES retours(id),
+ produit_id BIGINT NOT NULL REFERENCES produits(id), quantite INTEGER NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE depenses (
+ id BIGSERIAL PRIMARY KEY, site_id BIGINT REFERENCES sites(id), date_depense DATE NOT NULL,
+ montant NUMERIC(12,2) NOT NULL
+);
+CREATE TYPE controle_financier_statut AS ENUM ('aucun_ecart','ecart_a_expliquer','ecart_en_cours_de_resolution','resolu');
+CREATE TABLE controles_financiers (
+ id BIGSERIAL PRIMARY KEY, activite_id BIGINT NOT NULL REFERENCES activites(id),
+ ecart NUMERIC(12,2) NOT NULL DEFAULT 0, statut controle_financier_statut NOT NULL DEFAULT 'aucun_ecart'
+);
 SQL);
 
 $hash = password_hash('Test-Pass-2026!', PASSWORD_DEFAULT);
@@ -118,5 +175,44 @@ $siteService->affecterResponsable($siteB, $alpha, 'principal', $admin);
 $siteService->desactiver($siteB, $admin);
 check((int)$db->query("SELECT COUNT(*) FROM site_responsables WHERE site_id={$siteB} AND actif")->fetchColumn() === 0, 'désactivation site clôture ses affectations');
 check((int)$db->query("SELECT COUNT(*) FROM audit_logs WHERE action='site_desactive'")->fetchColumn() === 1, 'désactivation du site inscrite dans le journal d’audit');
+
+
+/* Tests comptables sur les vrais ActiviteService et RapportService. */
+require_once __DIR__ . '/../src/services/RapportService.php';
+$db->exec("INSERT INTO vendeurs(code,nom,prenom) VALUES ('V-TEST-1','Vendeur','Alpha'),('V-TEST-2','Vendeur','Beta')");
+$db->exec("INSERT INTO sacs(site_id,numero,categorie) VALUES ({$siteA},1,'entreprise'),({$siteA},19,'russell'),({$siteB},2,'entreprise')");
+$db->exec("INSERT INTO journees(site_id,date_jour,statut) VALUES ({$siteA},'2026-10-14','terminee'),({$siteB},'2026-10-14','terminee')");
+$dayA = (int)$db->query("SELECT id FROM journees WHERE site_id={$siteA}")->fetchColumn();
+$dayB = (int)$db->query("SELECT id FROM journees WHERE site_id={$siteB}")->fetchColumn();
+$db->exec("INSERT INTO produits(code,nom,unite) VALUES ('PETITE','Petite tasse','tasse')");
+$product = (int)$db->query("SELECT id FROM produits WHERE code='PETITE'")->fetchColumn();
+$db->exec("INSERT INTO activites(journee_id,vendeur_id,sac_id,periode,statut,sac_categorie) VALUES ({$dayA},1,1,'matin','terminee','entreprise'),({$dayA},2,2,'matin','terminee','russell'),({$dayB},1,3,'matin','terminee','entreprise')");
+$actCompany = (int)$db->query("SELECT id FROM activites WHERE sac_categorie='entreprise' AND journee_id={$dayA}")->fetchColumn();
+$actRussell = (int)$db->query("SELECT id FROM activites WHERE sac_categorie='russell'")->fetchColumn();
+$actSiteB = (int)$db->query("SELECT id FROM activites WHERE journee_id={$dayB}")->fetchColumn();
+$insertSupply = $db->prepare("INSERT INTO ravitaillements(activite_id,effectue_par,transport_par_ravitaillement) VALUES(:a,:u,:t) RETURNING id");
+$insertLine = $db->prepare("INSERT INTO ravitaillement_lignes(ravitaillement_id,produit_id,quantite,prix_unitaire,cout_unitaire) VALUES(:r,:p,:q,500,200)");
+$insertReturn = $db->prepare("INSERT INTO retours(activite_id,effectue_par) VALUES(:a,:u) RETURNING id");
+$insertReturnLine = $db->prepare("INSERT INTO retour_lignes(retour_id,produit_id,quantite) VALUES(:r,:p,:q)");
+foreach ([[$actCompany,100,4000,20],[$actRussell,80,2000,20],[$actSiteB,50,2000,10]] as [$aid,$received,$transport,$returned]) {
+ $insertSupply->execute(['a'=>$aid,'u'=>$admin,'t'=>$transport]); $rid=(int)$insertSupply->fetchColumn();
+ $insertLine->execute(['r'=>$rid,'p'=>$product,'q'=>$received]);
+ $insertReturn->execute(['a'=>$aid,'u'=>$admin]); $retid=(int)$insertReturn->fetchColumn();
+ $insertReturnLine->execute(['r'=>$retid,'p'=>$product,'q'=>$returned]);
+}
+$db->exec("INSERT INTO depenses(site_id,date_depense,montant) VALUES ({$siteA},'2026-10-14',5000),({$siteB},'2026-10-14',3000),(NULL,'2026-10-14',2000)");
+$accounting = new ActiviteService();
+$companyCalc = $accounting->calculer($actCompany);
+$russellCalc = $accounting->calculer($actRussell);
+check((float)$companyCalc['ca']===40000.0 && (float)$companyCalc['commission']===10000.0, 'activité entreprise : CA sur quantités vendues et commission 25 %');
+check((float)$companyCalc['consommables']===20000.0 && (float)$companyCalc['benefice']===6000.0, 'consommables calculés sur quantités reçues et bénéfice activité correct');
+check((float)$russellCalc['ca']===30000.0 && (float)$russellCalc['commission']===7500.0, 'sac Russell : commission vendeur maintenue à 25 %');
+check($russellCalc['beneficiaire_benefice']==='russell' && (float)$russellCalc['benefice']===4500.0, 'bénéfice du sac Russell attribué séparément à Russell');
+$report = (new RapportService())->pourJournee($dayA,$admin);
+check((float)$report['benefice_entreprise']===6000.0 && (float)$report['benefice_russell']===4500.0, 'RapportService sépare bénéfice entreprise et bénéfice Russell');
+check((float)$report['depenses_site']===5000.0 && (float)$report['benefice_apres_depenses_site']===1000.0, 'dépenses du site réduisent le bénéfice entreprise uniquement');
+$dashboard = new TableauDeBordControleur();
+/* Le tableau de bord dépend du contrôleur HTTP et de ses objets de requête ;
+   la consolidation du net sera couverte dans un test dédié si le constructeur est isolable. */
 
 echo "\\nSUCCÈS: tous les tests de services PHP et PostgreSQL ont réussi.\\n";
