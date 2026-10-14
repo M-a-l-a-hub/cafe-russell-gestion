@@ -23,10 +23,8 @@ VALUES (
     '+243000000001',
     'russell.demo@example.com',
 
-    -- Hash fictif uniquement pour la démonstration.
-    -- À remplacer par un vrai hash généré avec password_hash()
-    -- avant toute utilisation réelle.
-    '$2y$10$DEMO_HASH_SUPER_ADMINISTRATEUR',
+    -- Mot de passe du compte de démonstration : RussellDemo2026!.
+    '$2y$12$C6Gfqu3QS/pjkMSiHR.NVePGkMRwsrLDmRRF7fPgVTmPZkrZp03mS',
 
     'super_admin',
     TRUE
