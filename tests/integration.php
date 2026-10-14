@@ -53,6 +53,7 @@ CREATE UNIQUE INDEX uq_site_responsable_principal_actif ON site_responsables(sit
  WHERE type='principal' AND actif=TRUE;
 CREATE UNIQUE INDEX uq_site_responsable_user_site_actif ON site_responsables(site_id,user_id)
  WHERE actif=TRUE;
+CREATE TABLE sessions (id VARCHAR(128) PRIMARY KEY, donnees TEXT NOT NULL, derniere_activite TIMESTAMPTZ NOT NULL DEFAULT NOW());
 CREATE TABLE tentatives_connexion (
  id BIGSERIAL PRIMARY KEY, telephone VARCHAR(30) NOT NULL, adresse_ip VARCHAR(45) NOT NULL,
  reussie BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -118,5 +119,65 @@ $siteService->affecterResponsable($siteB, $alpha, 'principal', $admin);
 $siteService->desactiver($siteB, $admin);
 check((int)$db->query("SELECT COUNT(*) FROM site_responsables WHERE site_id={$siteB} AND actif")->fetchColumn() === 0, 'désactivation site clôture ses affectations');
 check((int)$db->query("SELECT COUNT(*) FROM audit_logs WHERE action='site_desactive'")->fetchColumn() === 1, 'désactivation du site inscrite dans le journal d’audit');
+
+
+// Tests HTTP réels sur le serveur PHP intégré : cookies de session, rôles et CSRF.
+$port = 18080;
+$logPath = sys_get_temp_dir() . '/cafe-russell-http-test.log';
+$log = fopen($logPath, 'w');
+$server = proc_open(
+    [PHP_BINARY, '-S', "127.0.0.1:{$port}", '-t', dirname(__DIR__) . '/public', dirname(__DIR__) . '/public/index.php'],
+    [0 => ['pipe', 'r'], 1 => $log, 2 => $log],
+    $pipes,
+    dirname(__DIR__),
+    array_merge($_ENV, ['DATABASE_URL' => getenv('DATABASE_URL'), 'APP_DEBUG' => 'true'])
+);
+if (!is_resource($server)) { throw new RuntimeException('Impossible de démarrer le serveur HTTP de test.'); }
+fclose($pipes[0]);
+$base = "http://127.0.0.1:{$port}";
+$cookie = tempnam(sys_get_temp_dir(), 'cr-cookie-');
+$bodyFile = tempnam(sys_get_temp_dir(), 'cr-body-');
+$http = function(string $method, string $path, ?array $json = null, bool $withCookie = false, ?string $csrf = null) use ($base,$cookie,$bodyFile): array {
+    $cmd = ['curl','-sS','-o',$bodyFile,'-w','%{http_code}','-X',$method];
+    if ($json !== null) { $cmd = array_merge($cmd, ['-H','Content-Type: application/json','--data',json_encode($json, JSON_UNESCAPED_UNICODE)]); }
+    if ($withCookie) { $cmd = array_merge($cmd, ['-b',$cookie,'-c',$cookie]); }
+    if ($csrf !== null) { $cmd = array_merge($cmd, ['-H','X-CSRF-Token: '.$csrf]); }
+    $cmd[] = $base.$path;
+    $escaped = implode(' ', array_map('escapeshellarg',$cmd));
+    $status = trim((string)shell_exec($escaped));
+    $body = (string)file_get_contents($bodyFile);
+    return [(int)$status, json_decode($body,true), $body];
+};
+try {
+    $ready = false;
+    for ($i=0; $i<40; $i++) {
+        [$status] = $http('GET','/api/sante');
+        if ($status === 200) { $ready = true; break; }
+        usleep(250000);
+    }
+    check($ready, 'serveur HTTP réel démarré et route santé disponible');
+    [$status,$payload] = $http('GET','/api/moi');
+    check($status === 401 && ($payload['erreur']['code'] ?? '') === 'non_connecte', 'route protégée refuse une requête sans session');
+    [$status,$payload] = $http('POST','/api/login',['telephone'=>'+999100002','mot_de_passe'=>'Test-Pass-2026!'],true);
+    check($status === 200 && ($payload['ok'] ?? false) === true, 'connexion HTTP réelle crée une session');
+    $csrf = $payload['donnees']['csrf'] ?? '';
+    check(is_string($csrf) && strlen($csrf) === 64, 'connexion HTTP renvoie un jeton CSRF');
+    [$status,$payload] = $http('GET','/api/moi',null,true);
+    check($status === 200 && ($payload['donnees']['utilisateur']['id'] ?? 0) === $alpha, 'cookie de session permet de retrouver le compte connecté');
+    [$status,$payload] = $http('POST','/api/logout',[],true);
+    check($status === 403 && ($payload['erreur']['code'] ?? '') === 'csrf_invalide', 'requête de modification sans CSRF refusée');
+    [$status,$payload] = $http('GET','/api/tableau-de-bord',null,true);
+    check($status === 403 && ($payload['erreur']['code'] ?? '') === 'acces_refuse', 'route superadmin refusée à un responsable connecté');
+    [$status,$payload] = $http('POST','/api/logout',[],true,$csrf);
+    check($status === 200 && ($payload['donnees']['deconnecte'] ?? false) === true, 'déconnexion HTTP exige le CSRF et réussit avec le jeton');
+    [$status] = $http('GET','/api/moi',null,true);
+    check($status === 401, 'session invalide après déconnexion');
+} finally {
+    proc_terminate($server);
+    proc_close($server);
+    @unlink($cookie);
+    @unlink($bodyFile);
+    @unlink($logPath);
+}
 
 echo "\\nSUCCÈS: tous les tests de services PHP et PostgreSQL ont réussi.\\n";
