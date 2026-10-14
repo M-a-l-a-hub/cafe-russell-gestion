@@ -101,11 +101,11 @@ final class TableauDeBordControleur extends ControleurBase
         // Consolidation depuis la table des dépenses : inclut aussi les sites
         // inactifs et les dépenses qui n'ont pas de rapport de journée associé.
         $depensesSiteBase = $this->uneLigne(
-            '
+            "
             SELECT COALESCE(SUM(montant), 0) AS total
             FROM depenses
             WHERE site_id IS NOT NULL AND date_depense = :date
-            ',
+            ",
             ['date' => $date]
         );
         $depensesSiteBaseTotal = round((float) $depensesSiteBase['total'], 2);
@@ -129,11 +129,11 @@ final class TableauDeBordControleur extends ControleurBase
         }
 
         $depensesGenerales = $this->uneLigne(
-            '
+            "
             SELECT COALESCE(SUM(montant), 0) AS total
             FROM depenses
             WHERE site_id IS NULL AND date_depense = :date
-            ',
+            ",
             ['date' => $date]
         );
         $totaux['depenses_generales'] = round((float) $depensesGenerales['total'], 2);
