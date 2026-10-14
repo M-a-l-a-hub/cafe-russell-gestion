@@ -1,6 +1,6 @@
 # Scénario de recette comptable — consolidation multi-sites
 
-Ce scénario utilise uniquement des chiffres fictifs. Il ne se connecte pas à Neon et ne modifie aucune donnée.
+Ce scénario utilise uniquement des chiffres fictifs. Les tests automatisés d'intégration utilisent une base PostgreSQL éphémère dans GitHub Actions ; ils ne se connectent pas à Neon et ne modifient aucune donnée de production.
 
 ## Règles à vérifier
 
@@ -28,11 +28,13 @@ Les retours sont déjà inclus dans les quantités ci-dessus. Le CA et la commis
 - Commissions vendeurs : 22 500 FC, y compris 7 500 FC sur le sac Russell.
 - Bénéfice entreprise avant dépenses : 9 000 FC.
 - Bénéfice Russell : 4 500 FC.
-- Dépenses site A : 5 000 FC.
-- Dépenses site B : 3 000 FC.
+- Dépenses du site A : 5 000 FC.
+- Dépenses du site B : 3 000 FC.
+- Dépense d'un site inactif sans journée associée : 700 FC.
 - Dépenses générales (sans site) : 2 000 FC.
-- Total des dépenses déduites du bénéfice entreprise : 10 000 FC.
-- **Bénéfice net entreprise consolidé attendu : −1 000 FC.**
+- Total des dépenses des sites : 8 700 FC.
+- Total des dépenses déduites du bénéfice entreprise : 10 700 FC.
+- **Bénéfice net entreprise consolidé attendu : −1 700 FC.**
 - **Bénéfice Russell attendu : 4 500 FC, inchangé par les dépenses consolidées de l'entreprise.**
 
 ## Contrôles de recette
@@ -40,7 +42,7 @@ Les retours sont déjà inclus dans les quantités ci-dessus. Le CA et la commis
 1. À la clôture, vérifier les CA, commissions et bénéfices de chaque activité.
 2. Après réouverture de la journée et correction d'un retour, vérifier que CA, commission et écart financier sont recalculés.
 3. Vérifier que le rapport attribue 9 000 FC à l'entreprise et 4 500 FC à Russell.
-4. Vérifier que le tableau de bord soustrait les 8 000 FC de dépenses des sites et les 2 000 FC de dépenses générales du bénéfice entreprise seulement.
+4. Vérifier que le tableau de bord soustrait les 8 700 FC de dépenses des sites et les 2 000 FC de dépenses générales du bénéfice entreprise seulement.
 5. Vérifier qu'une dépense de site sans journée associée reste incluse dans le total des dépenses du site pour la date choisie.
 6. Avec une activité fictive sur un site désactivé à la date testée, vérifier que son bénéfice entre dans les totaux consolidés même si sa carte opérationnelle reste masquée.
 7. Vérifier qu'aucune donnée réelle de production n'est utilisée dans cette recette.
@@ -60,4 +62,4 @@ Les retours sont déjà inclus dans les quantités ci-dessus. Le CA et la commis
 
 ## Limite
 
-Ce document est un scénario de recette chiffré, pas un test automatisé exécuté contre les services PHP. Les résultats attendus sont calculés à partir des règles comptables décrites ; une exécution applicative nécessite un environnement de test isolé avec les migrations et une base de test.
+Ce document décrit la recette manuelle métier et les résultats attendus ; il ne constitue pas, à lui seul, un test automatisé. Les tests automatisés des services PHP, du contrôleur de tableau de bord et des parcours HTTP sont définis dans `.github/workflows/tests-integration.yml` et s'exécutent sur une base de test isolée. La vérification visuelle de l'interface et la recette métier restent à effectuer avant fusion/déploiement.
