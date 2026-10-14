@@ -211,8 +211,5 @@ check($russellCalc['beneficiaire_benefice']==='russell' && (float)$russellCalc['
 $report = (new RapportService())->pourJournee($dayA,$admin);
 check((float)$report['benefice_entreprise']===6000.0 && (float)$report['benefice_russell']===4500.0, 'RapportService sépare bénéfice entreprise et bénéfice Russell');
 check((float)$report['depenses_site']===5000.0 && (float)$report['benefice_apres_depenses_site']===1000.0, 'dépenses du site réduisent le bénéfice entreprise uniquement');
-$dashboard = new TableauDeBordControleur();
-/* Le tableau de bord dépend du contrôleur HTTP et de ses objets de requête ;
-   la consolidation du net sera couverte dans un test dédié si le constructeur est isolable. */
 
 echo "\\nSUCCÈS: tous les tests de services PHP et PostgreSQL ont réussi.\\n";
