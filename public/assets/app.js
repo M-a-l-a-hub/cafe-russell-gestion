@@ -1832,7 +1832,7 @@ async function chargerTableauDeBord(date = null) {
       <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(donnees.totaux.benefice_russell)}</span></div>
       <div class="ligne"><span>Dépenses des sites</span><span class="montant">${fc(donnees.totaux.depenses_site)}</span></div>
       <div class="ligne"><span>Dépenses générales</span><span class="montant">${fc(donnees.totaux.depenses_generales ?? 0)}</span></div>
-      <div class="ligne"><span>Dépenses sans journée associée</span><span class="montant">${fc(donnees.totaux.depenses_sites_non_journee ?? 0)}</span></div>
+      <div class="ligne"><span>Dont : dépenses sans journée associée</span><span class="montant">${fc(donnees.totaux.depenses_sites_non_journee ?? 0)}</span></div>
       <div class="ligne"><strong>Bénéfice net consolidé</strong><strong class="montant">${fc(donnees.totaux.benefice_entreprise_net_consolide ?? 0)}</strong></div>
     </div>
     ${donnees.sites.map(carteSite).join('')}
