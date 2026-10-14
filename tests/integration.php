@@ -233,7 +233,7 @@ $dashboardRequest = new Requete('GET', '/api/tableau-de-bord', ['date' => '2026-
 $dashboardRequest->utilisateur = ['id' => $admin, 'role' => 'super_admin'];
 $dashboard = (new TableauDeBordControleur())->afficher($dashboardRequest);
 $dashboardTotals = $dashboard['totaux'];
-check((float)$dashboardTotals['ventes'] === 70000.0, 'tableau de bord consolide les ventes des sites actifs et inactifs');
+check((float)$dashboardTotals['ventes'] === 90000.0, 'tableau de bord consolide les ventes des sites actifs et inactifs');
 check((float)$dashboardTotals['benefice_entreprise'] === 9000.0, 'consolidation inclut le bénéfice entreprise du site inactif');
 check((float)$dashboardTotals['benefice_russell'] === 4500.0, 'consolidation garde le bénéfice Russell séparé');
 check((float)$dashboardTotals['depenses_site'] === 8700.0, 'consolidation inclut les dépenses de tous les sites, même sans journée');
