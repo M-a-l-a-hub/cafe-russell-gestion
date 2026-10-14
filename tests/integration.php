@@ -212,4 +212,18 @@ $report = (new RapportService())->pourJournee($dayA,$admin);
 check((float)$report['benefice_entreprise']===6000.0 && (float)$report['benefice_russell']===4500.0, 'RapportService sépare bénéfice entreprise et bénéfice Russell');
 check((float)$report['depenses_site']===5000.0 && (float)$report['benefice_apres_depenses_site']===1000.0, 'dépenses du site réduisent le bénéfice entreprise uniquement');
 
-echo "\nSUCCÈS: tous les tests de services PHP et PostgreSQL ont réussi.\n";
+// Le rapport vendeur agrège les activités de plusieurs sites sans oublier
+// la commission fixe de 25 % ni les coûts calculés sur les quantités reçues.
+$sellerReport = (new RapportService())->pourVendeur(1, $admin);
+check((float)$sellerReport['ventes']===60000.0, 'rapport vendeur : CA cumulé sur les deux sites');
+check((float)$sellerReport['commissions']===15000.0, 'rapport vendeur : commission de 25 % cumulée');
+check((float)$sellerReport['transport']===6000.0 && (float)$sellerReport['consommables']===30000.0, 'rapport vendeur : transport et consommables cumulés');
+check((float)$sellerReport['benefice_activites']===9000.0, 'rapport vendeur : bénéfice cumulé cohérent');
+
+// Garde-fou : une quantité retournée supérieure à la quantité reçue doit
+// être rejetée, et non produire un chiffre d'affaires négatif.
+$invalidReturn = (int)$db->query("SELECT id FROM retours WHERE activite_id={$actCompany}")->fetchColumn();
+$insertReturnLine->execute(['r'=>$invalidReturn,'p'=>$product,'q'=>101]);
+expectException(fn()=>$accounting->calculer($actCompany), RuntimeException::class, 'retour supérieur au ravitaillement rejeté');
+
+echo "\nSUCCÈS: tous les tests de services PHP, comptabilité et PostgreSQL ont réussi.\n";
