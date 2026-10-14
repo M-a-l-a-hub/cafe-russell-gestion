@@ -38,6 +38,8 @@ jobs:
           coverage: none
       - name: Installer les dépendances PHP
         run: composer install --no-interaction --prefer-dist
+      - name: Vérifier la syntaxe JavaScript
+        run: node --check public/assets/app.js
       - name: Exécuter les tests d’intégration
         run: php tests/integration.php
       - name: Démarrer le serveur HTTP de test
