@@ -96,6 +96,31 @@ final class TableauDeBordControleur extends ControleurBase
             $resultats[] = $entree;
         }
 
+        // Les sites inactifs restent absents des cartes opérationnelles,
+        // mais leurs activités du jour doivent compter dans les totaux consolidés.
+        $journeesSitesInactifs = $this->lignes(
+            "
+            SELECT j.id
+            FROM journees j
+            INNER JOIN sites s ON s.id = j.site_id
+            WHERE s.actif = FALSE AND j.date_jour = :date
+            ORDER BY j.site_id
+            ",
+            ['date' => $date]
+        );
+
+        foreach ($journeesSitesInactifs as $journeeInactive) {
+            $rapport = $rapportService->pourJournee(
+                (int) $journeeInactive['id'],
+                $userId
+            );
+
+            $totaux['ventes'] += $rapport['ventes'];
+            $totaux['benefice_entreprise'] += $rapport['benefice_entreprise'];
+            $totaux['benefice_russell'] += $rapport['benefice_russell'];
+            $totaux['vendeurs_site'] += $rapport['vendeurs'];
+        }
+
         // Consolidation depuis la table des dépenses : inclut aussi les sites
         // inactifs et les dépenses qui n'ont pas de rapport de journée associé.
         $depensesSiteBase = $this->uneLigne(
