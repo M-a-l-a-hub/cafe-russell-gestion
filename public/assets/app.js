@@ -1014,7 +1014,7 @@ function ouvrirModaleNouveauResponsable() {
       <div class="champ"><label>Prénom</label><input id="nr-prenom" maxlength="100"></div>
       <div class="champ"><label>Téléphone</label><input id="nr-telephone" maxlength="30" required></div>
       <div class="champ"><label>E-mail</label><input id="nr-email" type="email" maxlength="255"></div>
-      <div class="champ"><label>Mot de passe initial</label><input id="nr-mot-de-passe" type="password" minlength="8" required></div>
+      <div class="champ"><label>Mot de passe initial (10 caractères minimum)</label><input id="nr-mot-de-passe" type="password" minlength="10" maxlength="200" autocomplete="new-password" required></div>
       <p class="message-erreur" id="erreur-nr" hidden></p>
       <button class="principal" type="submit">Créer le responsable</button>
     </form>
@@ -1212,14 +1212,16 @@ function ouvrirModaleModifierSite(siteId, sites) {
 }
 
 function ouvrirModaleAffecterResponsable(siteId, responsables) {
+  const aucunResponsable = responsables.length === 0;
   ouvrirModale('Affecter un responsable', `
     <form id="form-affecter-responsable">
-      <div class="champ"><label>Responsable</label><select id="ar-responsable" required>
+      ${aucunResponsable ? '<p class="liste-vide">Aucun responsable actif. Crée d’abord un responsable depuis le menu.</p>' : ''}
+      <div class="champ"><label>Responsable</label><select id="ar-responsable" required ${aucunResponsable ? 'disabled' : ''}>
         ${responsables.map((r) => `<option value="${r.id}">${esc(r.prenom || '')} ${esc(r.nom)} (${esc(r.telephone)})</option>`).join('')}
       </select></div>
-      <div class="champ"><label>Type</label><select id="ar-type"><option value="principal">Principal</option><option value="adjoint">Adjoint</option></select></div>
+      <div class="champ"><label>Type</label><select id="ar-type" ${aucunResponsable ? 'disabled' : ''}><option value="principal">Principal</option><option value="adjoint">Adjoint</option></select></div>
       <p class="message-erreur" id="erreur-ar" hidden></p>
-      <button class="principal" type="submit">Enregistrer l’affectation</button>
+      <button class="principal" type="submit" ${aucunResponsable ? 'disabled' : ''}>Enregistrer l’affectation</button>
     </form>
   `);
 
