@@ -120,6 +120,7 @@ CREATE TABLE depenses (
  montant NUMERIC(12,2) NOT NULL
 );
 CREATE TYPE controle_financier_statut AS ENUM ('aucun_ecart','ecart_a_expliquer','ecart_en_cours_de_resolution','resolu');
+CREATE TABLE anomalies_stock (id BIGSERIAL PRIMARY KEY, activite_id BIGINT NOT NULL REFERENCES activites(id), statut VARCHAR(30) NOT NULL DEFAULT 'en_attente');
 CREATE TABLE controles_financiers (
  id BIGSERIAL PRIMARY KEY, activite_id BIGINT NOT NULL REFERENCES activites(id),
  ecart NUMERIC(12,2) NOT NULL DEFAULT 0, statut controle_financier_statut NOT NULL DEFAULT 'aucun_ecart'
@@ -137,9 +138,10 @@ $alpha = $makeUser('Responsable','Alpha','+999100002','responsable');
 $beta = $makeUser('Responsable','Beta','+999100003','responsable');
 $inactive = $makeUser('Responsable','Inactif','+999100004','responsable',false);
 $otherAdmin = $makeUser('Utilisateur','NonAdmin','+999100005','responsable');
-$db->exec("INSERT INTO sites(code,nom) VALUES ('TEST-A','Site de test A'),('TEST-B','Site de test B')");
+$db->exec("INSERT INTO sites(code,nom,actif) VALUES ('TEST-A','Site de test A',TRUE),('TEST-B','Site de test B',TRUE),('TEST-C','Site inactif sans journée',FALSE)");
 $siteA = (int)$db->query("SELECT id FROM sites WHERE code='TEST-A'")->fetchColumn();
 $siteB = (int)$db->query("SELECT id FROM sites WHERE code='TEST-B'")->fetchColumn();
+$siteC = (int)$db->query("SELECT id FROM sites WHERE code='TEST-C'")->fetchColumn();
 
 $siteService = new SiteService();
 $auth = new AuthService();
@@ -204,7 +206,7 @@ foreach ([[$actCompany,100,4000,20],[$actRussell,80,2000,20],[$actSiteB,50,2000,
  $insertReturn->execute(['a'=>$aid,'u'=>$admin]); $retid=(int)$insertReturn->fetchColumn();
  $insertReturnLine->execute(['r'=>$retid,'p'=>$product,'q'=>$returned]);
 }
-$db->exec("INSERT INTO depenses(site_id,date_depense,montant) VALUES ({$siteA},'2026-10-14',5000),({$siteB},'2026-10-14',3000),(NULL,'2026-10-14',2000)");
+$db->exec("INSERT INTO depenses(site_id,date_depense,montant) VALUES ({$siteA},'2026-10-14',5000),({$siteB},'2026-10-14',3000),({$siteC},'2026-10-14',700),(NULL,'2026-10-14',2000)");
 $accounting = new ActiviteService();
 $companyCalc = $accounting->calculer($actCompany);
 $russellCalc = $accounting->calculer($actRussell);
@@ -223,6 +225,22 @@ check((float)$sellerReport['ventes']===60000.0, 'rapport vendeur : CA cumulé su
 check((float)$sellerReport['commissions']===15000.0, 'rapport vendeur : commission de 25 % cumulée');
 check((float)$sellerReport['transport']===6000.0 && (float)$sellerReport['consommables']===30000.0, 'rapport vendeur : transport et consommables cumulés');
 check((float)$sellerReport['benefice_activites']===9000.0, 'rapport vendeur : bénéfice cumulé cohérent');
+
+// Test d'intégration du vrai contrôleur de tableau de bord multi-sites.
+require_once __DIR__ . '/../src/http/Requete.php';
+require_once __DIR__ . '/../src/http/controleurs/TableauDeBordControleur.php';
+$dashboardRequest = new Requete('GET', '/api/tableau-de-bord', ['date' => '2026-10-14'], '', [], '127.0.0.1');
+$dashboardRequest->utilisateur = ['id' => $admin, 'role' => 'super_admin'];
+$dashboard = (new TableauDeBordControleur())->afficher($dashboardRequest);
+$dashboardTotals = $dashboard['totaux'];
+check((float)$dashboardTotals['ventes'] === 70000.0, 'tableau de bord consolide les ventes des sites actifs et inactifs');
+check((float)$dashboardTotals['benefice_entreprise'] === 9000.0, 'consolidation inclut le bénéfice entreprise du site inactif');
+check((float)$dashboardTotals['benefice_russell'] === 4500.0, 'consolidation garde le bénéfice Russell séparé');
+check((float)$dashboardTotals['depenses_site'] === 8700.0, 'consolidation inclut les dépenses de tous les sites, même sans journée');
+check((float)$dashboardTotals['depenses_sites_non_journee'] === 700.0, 'dépense d’un site sans journée identifiée séparément');
+check((float)$dashboardTotals['depenses_generales'] === 2000.0, 'dépenses générales séparées des dépenses des sites');
+check((float)$dashboardTotals['benefice_entreprise_net_consolide'] === -1700.0, 'net entreprise = 9000 - 8700 - 2000, bénéfice Russell exclu');
+check(count($dashboard['sites']) === 1, 'site inactif exclu des cartes opérationnelles mais inclus dans la consolidation');
 
 // Garde-fou : une quantité retournée supérieure à la quantité reçue doit
 // être rejetée, et non produire un chiffre d'affaires négatif.
