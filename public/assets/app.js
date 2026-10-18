@@ -455,6 +455,7 @@ async function afficherJournee() {
       <div class="ligne"><span>Ventes</span><span class="montant">${fc(a.ca)}</span></div>
       <div class="ligne"><span>Bénéfice (${a.beneficiaire_benefice === 'russell' ? 'Russell' : 'entreprise'})</span><span class="montant">${fc(a.benefice)}</span></div>
       <div class="ligne"><span>Commission</span><span class="montant">${fc(a.commission)}</span></div>
+      <div class="ligne"><span>Ravitaillements</span><span class="montant">${a.nb_ravitaillements ?? 0}</span></div>
       <div class="ligne"><span>Transport</span><span class="montant">${fc(a.transport)}</span></div>
       <div class="ligne"><span>Consommables</span><span class="montant">${fc(a.consommables)}</span></div>
       ${rapport.journee.statut === 'ouverte' ? `
@@ -481,6 +482,7 @@ async function afficherJournee() {
       <div class="ligne"><span>Ventes</span><span class="montant">${fc(rapport.ventes)}</span></div>
       <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(rapport.benefice_entreprise)}</span></div>
       <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(rapport.benefice_russell)}</span></div>
+      <div class="ligne"><span>Ravitaillements total</span><span class="montant">${rapport.nb_ravitaillements ?? 0}</span></div>
       <div class="ligne"><span>Transport total</span><span class="montant">${fc(rapport.transport)}</span></div>
       <div class="ligne"><span>Consommables total</span><span class="montant">${fc(rapport.consommables)}</span></div>
       ${rapport.journee.statut === 'ouverte' ? `<button class="principal" id="btn-nouveau-ravitaillement" style="margin-top:12px">+ Nouveau ravitaillement</button>${enCours.length === 0 ? `<button class="secondaire" id="btn-cloturer-journee" style="margin-top:8px;width:100%">Clôturer la journée</button>` : `<p style="margin-top:8px">Clôturez toutes les activités en cours avant de clôturer la journée.</p>`}` : ''}

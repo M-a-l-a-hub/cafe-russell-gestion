@@ -35,6 +35,7 @@ class RapportService extends ServiceBase
             'vendeurs' => 0,
             'ventes' => 0.0,
             'transport' => 0.0,
+            'nb_ravitaillements' => 0,
             'commissions' => 0.0,
             'consommables' => 0.0,
             'benefice_activites' => 0.0,
@@ -58,10 +59,11 @@ class RapportService extends ServiceBase
             $resume['activites'][] = $calcul;
             $resume['ventes'] += $calcul['ca'];
             $resume['transport'] += $calcul['transport'];
+            $resume['nb_ravitaillements'] += $calcul['nb_ravitaillements'];
             $resume['commissions'] += $calcul['commission'];
             $resume['consommables'] += $calcul['consommables'];
             $resume['benefice_activites'] += $calcul['benefice'];
-            
+
             if ($calcul['beneficiaire_benefice'] === 'russell') {
                 $resume['benefice_russell'] += $calcul['benefice'];
             } else {

@@ -208,6 +208,10 @@ class ActiviteService
                 2
             ),
 
+            'nb_ravitaillements' =>
+                $this->ravitaillementModel
+                    ->countByActiviteId($activiteId),
+
             'commission' => $commissionTotal,
 
             'taux_commission' => $tauxCommission,
