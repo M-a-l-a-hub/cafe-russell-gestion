@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../ControleurBase.php';
 require_once __DIR__ . '/../../services/ActiviteService.php';
 require_once __DIR__ . '/../../services/SoldeVendeurService.php';
+require_once __DIR__ . '/../../services/JourneeService.php';
 
 /**
  * Lectures seules : listes de référence, détail d'une activité,
@@ -172,6 +173,9 @@ final class LecturesControleur extends ControleurBase
     {
         $siteId = $req->parametreChemin('id');
         $this->verifierSite($req, $siteId);
+
+        // Clôture d'abord les journées oubliées de ce site (après 05 h 00 le lendemain).
+        (new JourneeService())->cloturerJourneesEnRetard($siteId);
 
         $statut = $req->queryChoix('statut', ['ouverte', 'cloturee']);
         $limite = max(1, min(100, $req->queryEntier('limite') ?? 30));

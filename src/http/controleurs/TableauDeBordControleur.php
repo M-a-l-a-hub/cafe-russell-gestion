@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../ControleurBase.php';
 require_once __DIR__ . '/../../services/RapportService.php';
+require_once __DIR__ . '/../../services/JourneeService.php';
 
 /**
  * Vue d'ensemble multi-sites pour Russell : statut du jour par site,
@@ -14,6 +15,9 @@ final class TableauDeBordControleur extends ControleurBase
     /** GET /api/tableau-de-bord?date=AAAA-MM-JJ (journée la plus récente par défaut) */
     public function afficher(Requete $req): array
     {
+        // Clôture d'abord les journées oubliées (après 05 h 00 le lendemain).
+        (new JourneeService())->cloturerJourneesEnRetard();
+
         $date = $req->queryDate('date');
 
         if ($date === null) {
@@ -56,6 +60,8 @@ final class TableauDeBordControleur extends ControleurBase
             $entree = [
                 'site' => $site,
                 'journee' => $journee,
+                'journee_en_retard' => $journee !== null
+                    && JourneeService::estEnRetard($date, (string) $journee['statut']),
                 'ventes' => 0.0,
                 'benefice_entreprise' => 0.0,
                 'benefice_russell' => 0.0,

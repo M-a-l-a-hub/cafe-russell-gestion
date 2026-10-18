@@ -1856,13 +1856,13 @@ async function chargerTableauDeBord(date = null, silencieux = false) {
   const carteSite = (entree) => {
     const j = entree.journee;
     const statut = j ? (j.statut === 'ouverte' ? 'ouverte' : 'cloturee') : null;
-    const libelleStatut = j ? (j.statut === 'ouverte' ? 'ouverte' : 'clôturée') : 'aucune journée';
+    const libelleStatut = j ? (j.statut === 'ouverte' ? (entree.journee_en_retard ? 'à clôturer' : 'ouverte') : 'clôturée') : 'aucune journée';
 
     return `
       <div class="carte" data-site-carte="${entree.site.id}" style="cursor:pointer">
         <div class="carte-titre">
           <strong>${esc(entree.site.nom)}</strong>
-          <span class="etiquette ${statut ?? ''}">${libelleStatut}</span>
+          <span class="etiquette ${entree.journee_en_retard ? 'ecart' : (statut ?? '')}">${libelleStatut}</span>
         </div>
         <div class="ligne"><span>Nombre des vendeurs</span><span class="montant">${entree.vendeurs_site ?? 0}</span></div>
         <div class="ligne"><span>Ventes</span><span class="montant">${fc(entree.ventes)}</span></div>

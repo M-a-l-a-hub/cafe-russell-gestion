@@ -353,6 +353,167 @@ class JourneeService
     }
 
     /**
+     * Heure (Kinshasa) du lendemain à partir de laquelle une journée
+     * restée ouverte est clôturée automatiquement. 05 h 00 laisse finir
+     * un service de nuit (soirée, mariage) sans le couper à minuit.
+     */
+    public const HEURE_COUPURE_AUTO = 5;
+
+    /**
+     * Une journée ouverte est « en retard » quand son heure de coupure
+     * (lendemain, HEURE_COUPURE_AUTO) est passée.
+     */
+    public static function estEnRetard(string $dateJour, string $statut): bool
+    {
+        if ($statut !== 'ouverte') {
+            return false;
+        }
+
+        $coupure = (new DateTimeImmutable(substr($dateJour, 0, 10) . ' 00:00:00'))
+            ->modify('+1 day')
+            ->setTime(self::HEURE_COUPURE_AUTO, 0);
+
+        return new DateTimeImmutable('now') >= $coupure;
+    }
+
+    /**
+     * Clôture les journées restées ouvertes après leur heure de coupure
+     * (toutes, ou celles d'un seul site). Appelée à l'ouverture de
+     * l'application et du tableau de bord : le service gratuit s'endort
+     * la nuit, donc la vérification se fait à la première requête.
+     *
+     * Une journée dont des activités sont encore en cours ou en anomalie
+     * n'est pas touchée : elle reste ouverte et apparaît « à clôturer ».
+     * Une erreur sur une journée n'empêche jamais la requête en cours.
+     *
+     * @return int Nombre de journées clôturées.
+     */
+    public function cloturerJourneesEnRetard(?int $siteId = null): int
+    {
+        $sql = "
+            SELECT j.id
+            FROM journees j
+            WHERE j.statut = 'ouverte'
+              AND CAST(j.date_jour AS TIMESTAMP)
+                  + INTERVAL '1 day'
+                  + (CAST(:heure AS INTEGER) * INTERVAL '1 hour')
+                  <= CAST(:maintenant AS TIMESTAMP)";
+
+        $params = [
+            'heure' => self::HEURE_COUPURE_AUTO,
+            'maintenant' => date('Y-m-d H:i:s'),
+        ];
+
+        if ($siteId !== null) {
+            $sql .= ' AND j.site_id = :site_id';
+            $params['site_id'] = $siteId;
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        $nombre = 0;
+
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $journeeId) {
+            try {
+                if ($this->cloturerAutomatiquement((int) $journeeId)) {
+                    $nombre++;
+                }
+            } catch (Throwable $e) {
+                error_log(
+                    'Clôture automatique de la journée ' . $journeeId
+                    . ' impossible : ' . $e->getMessage()
+                );
+            }
+        }
+
+        return $nombre;
+    }
+
+    /**
+     * Clôture une journée oubliée. La table journees et le journal d'audit
+     * exigent un utilisateur : c'est celui qui a ouvert la journée, et la
+     * note « Clôture automatique » permet de reconnaître ce cas.
+     *
+     * @return bool false si la journée n'est plus ouverte ou si des
+     *              activités sont encore en cours ou en anomalie.
+     */
+    private function cloturerAutomatiquement(int $journeeId): bool
+    {
+        return (bool) $this->enTransaction(
+            function () use ($journeeId): bool {
+                $stmt = $this->db->prepare(
+                    "
+                    SELECT id, site_id, statut, ouverte_par
+                    FROM journees
+                    WHERE id = :id
+                    FOR UPDATE
+                    "
+                );
+                $stmt->execute(['id' => $journeeId]);
+                $journee = $stmt->fetch();
+
+                if ($journee === false || $journee['statut'] !== 'ouverte') {
+                    return false;
+                }
+
+                $stmt = $this->db->prepare(
+                    "
+                    SELECT COUNT(*)
+                    FROM activites
+                    WHERE journee_id = :id
+                      AND statut IN ('en_cours', 'anomalie')
+                    "
+                );
+                $stmt->execute(['id' => $journeeId]);
+
+                if ((int) $stmt->fetchColumn() > 0) {
+                    return false;
+                }
+
+                $note = sprintf(
+                    'Clôture automatique à %02d h 00 le lendemain '
+                    . '(journée non clôturée par le responsable).',
+                    self::HEURE_COUPURE_AUTO
+                );
+
+                $stmt = $this->db->prepare(
+                    "
+                    UPDATE journees
+                    SET
+                        statut = 'cloturee',
+                        cloturee_par = ouverte_par,
+                        date_cloture = NOW(),
+                        note_cloture = :note,
+                        updated_at = NOW()
+                    WHERE id = :id
+                      AND statut = 'ouverte'
+                    "
+                );
+                $stmt->execute(['id' => $journeeId, 'note' => $note]);
+
+                if ($stmt->rowCount() !== 1) {
+                    return false;
+                }
+
+                AuditService::enregistrer(
+                    $this->db,
+                    (int) $journee['ouverte_par'],
+                    'journee_cloturee_auto',
+                    'journees',
+                    $journeeId,
+                    (int) $journee['site_id'],
+                    ['statut' => 'ouverte'],
+                    ['statut' => 'cloturee'],
+                    $note
+                );
+
+                return true;
+            }
+        );
+    }
+
+    /**
      * Vérifie si une journée peut encore recevoir des opérations.
      */
     public function verifierOuverte(int $journeeId): array
