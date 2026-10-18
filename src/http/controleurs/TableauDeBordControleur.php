@@ -11,10 +11,22 @@ require_once __DIR__ . '/../../services/RapportService.php';
  */
 final class TableauDeBordControleur extends ControleurBase
 {
-    /** GET /api/tableau-de-bord?date=AAAA-MM-JJ (aujourd'hui par défaut) */
+    /** GET /api/tableau-de-bord?date=AAAA-MM-JJ (journée la plus récente par défaut) */
     public function afficher(Requete $req): array
     {
-        $date = $req->queryDate('date') ?? date('Y-m-d');
+        $date = $req->queryDate('date');
+
+        if ($date === null) {
+            // Sans date choisie : la journée la plus récente (aujourd'hui ou
+            // avant), pour ne pas afficher un tableau vide quand les sites
+            // n'ont pas encore ouvert de journée aujourd'hui.
+            $derniere = $this->uneLigne(
+                'SELECT MAX(date_jour) AS d FROM journees WHERE date_jour <= :aujourdhui',
+                ['aujourdhui' => date('Y-m-d')]
+            );
+
+            $date = $derniere['d'] ?? date('Y-m-d');
+        }
 
         $sites = $this->lignes('SELECT id, code, nom FROM sites WHERE actif = TRUE ORDER BY nom');
 

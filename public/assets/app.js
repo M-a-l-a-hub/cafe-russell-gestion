@@ -1847,9 +1847,11 @@ async function chargerTableauDeBord(date = null, silencieux = false) {
     afficherVue('tableau', '<p class="chargement">Chargement…</p>');
   }
 
-  const dateChoisie = date || aujourdhui();
-  const donnees = await api(`/api/tableau-de-bord?date=${dateChoisie}`);
-  etat.tableauDate = dateChoisie;
+  // Sans date choisie, le serveur renvoie la journée la plus récente.
+  const donnees = await api(date ? `/api/tableau-de-bord?date=${date}` : '/api/tableau-de-bord');
+  const dateChoisie = donnees.date;
+  etat.tableauDateChoisie = date;
+  etat.tableauCharge = true;
 
   const carteSite = (entree) => {
     const j = entree.journee;
@@ -1932,9 +1934,9 @@ function rafraichirTableauDeBordSiAffiche() {
   const section = document.getElementById('vue-tableau');
   const modaleOuverte = elModale && !elModale.hidden;
 
-  if (!section || section.hidden || document.hidden || modaleOuverte || !etat.tableauDate) return;
+  if (!section || section.hidden || document.hidden || modaleOuverte || !etat.tableauCharge) return;
 
-  chargerTableauDeBord(etat.tableauDate, true).catch(() => {});
+  chargerTableauDeBord(etat.tableauDateChoisie, true).catch(() => {});
 }
 
 setInterval(rafraichirTableauDeBordSiAffiche, 30000);
