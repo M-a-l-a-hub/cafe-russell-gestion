@@ -478,7 +478,7 @@ async function afficherJournee() {
       <div class="ligne"><span>Ventes</span><span class="montant">${fc(rapport.ventes)}</span></div>
       <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(rapport.benefice_entreprise)}</span></div>
       <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(rapport.benefice_russell)}</span></div>
-      ${rapport.journee.statut === 'ouverte' ? `<button class="principal" id="btn-nouveau-ravitaillement" style="margin-top:12px">+ Nouveau ravitaillement</button>${enCours.length === 0 ? `<button class="secondaire" id="btn-cloturer-journee" style="margin-top:8px;width:100%">Clôturer la journée</button>` : `<p class="aide" style="margin-top:8px">Clôturez toutes les activités en cours avant de clôturer la journée.</p>`}` : ''}
+      ${rapport.journee.statut === 'ouverte' ? `<button class="principal" id="btn-nouveau-ravitaillement" style="margin-top:12px">+ Nouveau ravitaillement</button>${enCours.length === 0 ? `<button class="secondaire" id="btn-cloturer-journee" style="margin-top:8px;width:100%">Clôturer la journée</button>` : `<p style="margin-top:8px">Clôturez toutes les activités en cours avant de clôturer la journée.</p>`}` : ''}
     </div>
     ${enCours.length ? '<h2>En cours</h2>' + enCours.map(carteActivite).join('') : ''}
     ${terminees.length ? '<h2>Clôturées</h2>' + terminees.map(carteActivite).join('') : ''}
