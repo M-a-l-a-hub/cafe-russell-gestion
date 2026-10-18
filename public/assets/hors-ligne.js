@@ -347,10 +347,85 @@ const HorsLigne = (() => {
     });
   }
 
+  /* ---- Clôture locale de secours à 05 h 00 (Kinshasa) ----
+   * Le navigateur ne peut pas exécuter ce contrôle si l'application est
+   * complètement fermée/suspendue. Au prochain démarrage, on rattrape
+   * l'échéance à partir du cache. Le serveur reste seul juge de la clôture.
+   */
+  function dateHeureKinshasa() {
+    const parties = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Kinshasa',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date());
+    const valeur = Object.fromEntries(parties.map((p) => [p.type, p.value]));
+    return {
+      date: `${valeur.year}-${valeur.month}-${valeur.day}`,
+      minutes: Number(valeur.hour) * 60 + Number(valeur.minute),
+    };
+  }
+
+  async function verifierClotureAutomatiqueLocale() {
+    if (navigator.onLine || !etat.utilisateur || !etat.siteId) return;
+
+    try {
+      const maintenant = dateHeureKinshasa();
+      if (maintenant.minutes < 5 * 60) return;
+
+      // On ne cible que la journée d'hier, jamais une ancienne journée
+      // rouverte volontairement par Russell.
+      const hier = new Date(`${maintenant.date}T00:00:00Z`);
+      hier.setUTCDate(hier.getUTCDate() - 1);
+      const dateHier = [
+        hier.getUTCFullYear(),
+        String(hier.getUTCMonth() + 1).padStart(2, '0'),
+        String(hier.getUTCDate()).padStart(2, '0'),
+      ].join('-');
+
+      const cheminListe = `/api/sites/${etat.siteId}/journees?limite=30`;
+      const cache = await lireCache(cheminListe);
+      const journees = cache && Array.isArray(cache.donnees) ? cache.donnees : [];
+      const journee = journees.find((j) =>
+        String(j.date_jour || '').slice(0, 10) === dateHier
+        && j.statut === 'ouverte'
+      );
+
+      if (!journee || !journee.id) return;
+
+      const marqueur = `auto-cloture-locale:${journee.id}:${dateHier}`;
+      if (await lireCache(marqueur)) return;
+
+      // Une clé stable stockée localement évite les demandes répétées.
+      const cheminCloture = `/api/journees/${journee.id}/cloture`;
+      const items = await lister();
+      if (items.some((i) => i.chemin === cheminCloture)) return;
+
+      await ajouter({
+        cle: nouvelleCle(),
+        chemin: cheminCloture,
+        corps: {
+          note: 'Demande de clôture automatique locale après 05 h 00 (Kinshasa).',
+        },
+      });
+      await mettreEnCache(marqueur, {
+        journee_id: journee.id,
+        date_jour: dateHier,
+        demande_creee_le: Date.now(),
+      });
+      notifier(
+        `Clôture de la journée du ${dateHier} mise en attente. `
+        + 'Elle sera validée par le serveur au retour d’Internet.'
+      );
+    } catch (e) {
+      console.warn('Vérification de clôture locale impossible :', e);
+    }
+  }
+
   function demarrer() {
     injecterStyle();
     rafraichirBadge();
     synchroniser();
+    verifierClotureAutomatiqueLocale();
 
     if (minuteur === null) {
       window.addEventListener('online', () => { rafraichirBadge(); synchroniser(); });
@@ -358,7 +433,10 @@ const HorsLigne = (() => {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') synchroniser();
       });
-      minuteur = setInterval(synchroniser, 30000);
+      minuteur = setInterval(() => {
+        synchroniser();
+        verifierClotureAutomatiqueLocale();
+      }, 30000);
     }
   }
 
