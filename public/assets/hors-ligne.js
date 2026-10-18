@@ -4,11 +4,13 @@
  * Mode hors ligne
  *  - lectures (GET) : dernière réponse gardée dans IndexedDB et servie si
  *    le réseau est coupé ;
- *  - écritures autorisées (dépenses, ravitaillements, retours) : mises en
- *    file d'attente, puis envoyées dans l'ordre au retour du réseau, avec
- *    une clé d'idempotence (le serveur n'exécute jamais deux fois la
- *    même saisie).
- * Les clôtures, retraits et paiements restent volontairement en ligne.
+ *  - écritures autorisées (dépenses, ravitaillements, retours et demande
+ *    de clôture d'une journée) : file persistante, envoyée dans l'ordre au
+ *    retour du réseau avec une clé d'idempotence ;
+ *  - les retraits et paiements restent exclusivement en ligne.
+ *
+ * Une clôture mise en file est une DEMANDE en attente : seul le serveur
+ * peut confirmer la clôture après ses contrôles métier.
  * ------------------------------------------------------------------- */
 
 const HorsLigne = (() => {
@@ -18,6 +20,7 @@ const HorsLigne = (() => {
     /^\/api\/activites\/\d+\/ravitaillements$/,
     /^\/api\/activites\/\d+\/retours$/,
     /^\/api\/journees\/\d+\/ravitaillements$/,
+    /^\/api\/journees\/\d+\/cloture$/,
   ];
 
   let basePromesse = null;
@@ -104,6 +107,11 @@ const HorsLigne = (() => {
   }
 
   function decrire(chemin, corps) {
+    if (/\/cloture$/.test(chemin) && /\/api\/journees\/\d+\/cloture$/.test(chemin)) {
+      const id = (chemin.match(/journees\/(\d+)/) || [])[1];
+      return `Demande de clôture de la journée ${id ?? ''} (validation serveur requise)`;
+    }
+
     if (/depenses$/.test(chemin)) {
       return `Dépense : ${corps?.libelle ?? ''} (${Number(corps?.montant ?? 0).toLocaleString('fr-FR')} FC)`;
     }
@@ -133,6 +141,7 @@ const HorsLigne = (() => {
       statut: 'attente',
       message: null,
       le: Date.now(),
+      type: /\/api\/journees\/\d+\/cloture$/.test(chemin) ? 'cloture_journee' : 'saisie',
     }));
     await rafraichirBadge();
   }
