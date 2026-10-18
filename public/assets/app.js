@@ -440,6 +440,33 @@ async function afficherJournee() {
   const enCours = rapport.activites.filter((a) => a.activite.statut !== 'terminee' && a.activite.statut !== 'annulee');
   const terminees = rapport.activites.filter((a) => a.activite.statut === 'terminee');
 
+  // Transport et consommables cumulés par vendeur (matin + soir, etc.).
+  const parVendeur = new Map();
+  rapport.activites
+    .filter((a) => a.activite.statut !== 'annulee')
+    .forEach((a) => {
+      const cle = a.activite.vendeur_id ?? `${a.activite.vendeur_prenom} ${a.activite.vendeur_nom}`;
+      if (!parVendeur.has(cle)) {
+        parVendeur.set(cle, {
+          nom: `${a.activite.vendeur_prenom} ${a.activite.vendeur_nom}`,
+          transport: 0,
+          consommables: 0,
+        });
+      }
+      const v = parVendeur.get(cle);
+      v.transport += Number(a.transport) || 0;
+      v.consommables += Number(a.consommables) || 0;
+    });
+
+  const blocParVendeur = parVendeur.size ? `
+    <h3 style="font-size:1rem;margin:14px 0 4px">Transport et consommables par vendeur</h3>
+    ${[...parVendeur.values()].map((v) => `
+      <div style="margin-top:8px"><strong>${esc(v.nom)}</strong></div>
+      <div class="ligne"><span>Transport</span><span class="montant">${fc(v.transport)}</span></div>
+      <div class="ligne"><span>Consommables</span><span class="montant">${fc(v.consommables)}</span></div>
+    `).join('')}
+  ` : '';
+
   const carteActivite = (a) => `
     <div class="carte">
       <div class="carte-titre">
@@ -478,6 +505,9 @@ async function afficherJournee() {
       <div class="ligne"><span>Ventes</span><span class="montant">${fc(rapport.ventes)}</span></div>
       <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(rapport.benefice_entreprise)}</span></div>
       <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(rapport.benefice_russell)}</span></div>
+      <div class="ligne"><span>Transport total</span><span class="montant">${fc(rapport.transport)}</span></div>
+      <div class="ligne"><span>Consommables total</span><span class="montant">${fc(rapport.consommables)}</span></div>
+      ${blocParVendeur}
       ${rapport.journee.statut === 'ouverte' ? `<button class="principal" id="btn-nouveau-ravitaillement" style="margin-top:12px">+ Nouveau ravitaillement</button>${enCours.length === 0 ? `<button class="secondaire" id="btn-cloturer-journee" style="margin-top:8px;width:100%">Clôturer la journée</button>` : `<p style="margin-top:8px">Clôturez toutes les activités en cours avant de clôturer la journée.</p>`}` : ''}
     </div>
     ${enCours.length ? '<h2>En cours</h2>' + enCours.map(carteActivite).join('') : ''}
