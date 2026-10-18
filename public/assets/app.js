@@ -345,8 +345,7 @@ function afficherVue(id, html) {
 async function chargerAccueil() {
   afficherVue('accueil', '<p class="chargement">Chargement…</p>');
 
-  const journees = await api(`/api/sites/${etat.siteId}/journees?limite=30`)
-    .catch(() => []);
+  const journees = await api(`/api/sites/${etat.siteId}/journees?limite=30`);
 
   const journeeOuverte = journees.find((j) => j.statut === 'ouverte') || null;
 
@@ -479,7 +478,7 @@ async function afficherJournee() {
       <div class="ligne"><span>Ventes</span><span class="montant">${fc(rapport.ventes)}</span></div>
       <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(rapport.benefice_entreprise)}</span></div>
       <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(rapport.benefice_russell)}</span></div>
-      ${rapport.journee.statut === 'ouverte' ? `<button class="principal" id="btn-nouveau-ravitaillement" style="margin-top:12px">+ Nouveau ravitaillement</button>` : ''}
+      ${rapport.journee.statut === 'ouverte' ? `<button class="principal" id="btn-nouveau-ravitaillement" style="margin-top:12px">+ Nouveau ravitaillement</button>${enCours.length === 0 ? `<button class="secondaire" id="btn-cloturer-journee" style="margin-top:8px;width:100%">Clôturer la journée</button>` : `<p class="aide" style="margin-top:8px">Clôturez toutes les activités en cours avant de clôturer la journée.</p>`}` : ''}
     </div>
     ${enCours.length ? '<h2>En cours</h2>' + enCours.map(carteActivite).join('') : ''}
     ${terminees.length ? '<h2>Clôturées</h2>' + terminees.map(carteActivite).join('') : ''}
@@ -490,6 +489,11 @@ async function afficherJournee() {
 
   const btnNouveau = document.getElementById('btn-nouveau-ravitaillement');
   if (btnNouveau) btnNouveau.addEventListener('click', () => ouvrirModaleRavitaillement());
+
+  const btnCloturerJournee = document.getElementById('btn-cloturer-journee');
+  if (btnCloturerJournee) {
+    btnCloturerJournee.addEventListener('click', () => cloturerJournee(etat.journee.id));
+  }
 
   document.querySelectorAll('[data-ravitailler]').forEach((b) => {
     b.addEventListener('click', () => ouvrirModaleRavitaillement(Number(b.dataset.ravitailler)));
@@ -503,6 +507,24 @@ async function afficherJournee() {
   document.querySelectorAll('[data-annuler]').forEach((b) => {
     b.addEventListener('click', () => annulerActivite(Number(b.dataset.annuler)));
   });
+}
+
+async function cloturerJournee(journeeId) {
+  const confirmer = confirm(
+    'Confirmer la clôture de cette journée ? Vérifiez que toutes les ventes et activités sont terminées.'
+  );
+  if (!confirmer) return;
+
+  try {
+    await api(`/api/journees/${journeeId}/cloture`, {
+      method: 'POST',
+      corps: {},
+    });
+    etat.journee = { ...etat.journee, statut: 'cloturee' };
+    await chargerAccueil();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 async function annulerActivite(activiteId) {
