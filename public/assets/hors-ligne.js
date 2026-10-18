@@ -395,7 +395,7 @@ const HorsLigne = (() => {
       const marqueur = `auto-cloture-locale:${journee.id}:${dateHier}`;
       if (await lireCache(marqueur)) return;
 
-      // Une clé stable stockée localement évite les demandes répétées.
+      // Un marqueur stable stocké localement évite les demandes répétées.
       const cheminCloture = `/api/journees/${journee.id}/cloture`;
       const items = await lister();
       if (items.some((i) => i.chemin === cheminCloture)) return;
@@ -431,7 +431,10 @@ const HorsLigne = (() => {
       window.addEventListener('online', () => { rafraichirBadge(); synchroniser(); });
       window.addEventListener('offline', rafraichirBadge);
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') synchroniser();
+        if (document.visibilityState === 'visible') {
+          synchroniser();
+          verifierClotureAutomatiqueLocale();
+        }
       });
       minuteur = setInterval(() => {
         synchroniser();
