@@ -128,67 +128,80 @@ class JourneeService
         int $userId,
         ?string $note = null
     ): void {
-        $journee = $this->journee->findById($journeeId);
-
-        if (!$journee) {
-            throw new RuntimeException('Journée introuvable.');
-        }
-
-        (new AutorisationService($this->db))->verifierSite(
-            $userId,
-            (int) $journee['site_id']
-        );
-
-        if ($journee['statut'] !== 'ouverte') {
-            throw new RuntimeException(
-                'Cette journée est déjà clôturée.'
-            );
-        }
-
-        $user = $this->user->findById($userId);
-
-        if (!$user) {
-            throw new RuntimeException('Utilisateur introuvable.');
-        }
-
-        // Règle confirmée : on ne clôture pas une journée qui contient
-        // encore des activités en cours.
-        $stmt = $this->db->prepare("
-            SELECT COUNT(*)
-            FROM activites
-            WHERE journee_id = :id
-              AND statut = 'en_cours'
-        ");
-
-        $stmt->execute(['id' => $journeeId]);
-
-        if ((int) $stmt->fetchColumn() > 0) {
-            throw new RuntimeException(
-                'Impossible de clôturer la journée : '
-                . 'des activités sont encore en cours.'
-            );
-        }
-
-        $sql = "
-            UPDATE journees
-            SET
-                statut = 'cloturee',
-                cloturee_par = :cloturee_par,
-                date_cloture = NOW(),
-                note_cloture = :note_cloture,
-                updated_at = NOW()
-            WHERE id = :id
-              AND statut = 'ouverte'
-        ";
-
         $this->enTransaction(
-            function () use ($sql, $journeeId, $userId, $note, $journee): void {
-                $stmt = $this->db->prepare($sql);
+            function () use ($journeeId, $userId, $note): void {
+                // Verrouille la journée avant de contrôler les activités.
+                // DemarrageActiviteService et RavitaillementService prennent
+                // le même verrou : aucune activité ne peut démarrer entre
+                // le contrôle et la clôture.
+                $stmt = $this->db->prepare(
+                    "
+                    SELECT id, site_id, statut
+                    FROM journees
+                    WHERE id = :id
+                    FOR UPDATE
+                    "
+                );
+                $stmt->execute(['id' => $journeeId]);
+                $journee = $stmt->fetch();
 
+                if ($journee === false) {
+                    throw new RuntimeException('Journée introuvable.');
+                }
+
+                (new AutorisationService($this->db))->verifierSite(
+                    $userId,
+                    (int) $journee['site_id']
+                );
+
+                if ($journee['statut'] !== 'ouverte') {
+                    throw new RuntimeException(
+                        'Cette journée est déjà clôturée.'
+                    );
+                }
+
+                $user = $this->user->findById($userId);
+
+                if (!$user) {
+                    throw new RuntimeException('Utilisateur introuvable.');
+                }
+
+                // Une activité en cours ou en anomalie doit être terminée
+                // ou traitée avant la clôture de la journée.
+                $stmt = $this->db->prepare(
+                    "
+                    SELECT COUNT(*)
+                    FROM activites
+                    WHERE journee_id = :id
+                      AND statut IN ('en_cours', 'anomalie')
+                    "
+                );
+                $stmt->execute(['id' => $journeeId]);
+
+                if ((int) $stmt->fetchColumn() > 0) {
+                    throw new RuntimeException(
+                        'Impossible de clôturer la journée : '
+                        . 'des activités sont encore en cours ou en anomalie.'
+                    );
+                }
+
+                $stmt = $this->db->prepare(
+                    "
+                    UPDATE journees
+                    SET
+                        statut = 'cloturee',
+                        cloturee_par = :cloturee_par,
+                        date_cloture = NOW(),
+                        note_cloture = :note_cloture,
+                        updated_at = NOW()
+                    WHERE id = :id
+                      AND statut = 'ouverte'
+                    "
+                );
                 $stmt->execute([
                     'id' => $journeeId,
                     'cloturee_par' => $userId,
-                    'note_cloture' => $note
+                    'note_cloture' => $note,
                 ]);
 
                 if ($stmt->rowCount() !== 1) {
