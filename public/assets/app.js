@@ -1842,11 +1842,14 @@ function ouvrirModaleCorrectionDepense(depense) {
  * Tableau de bord (Russell) : vue multi-sites
  * ------------------------------------------------------------------- */
 
-async function chargerTableauDeBord(date = null) {
-  afficherVue('tableau', '<p class="chargement">Chargement…</p>');
+async function chargerTableauDeBord(date = null, silencieux = false) {
+  if (!silencieux) {
+    afficherVue('tableau', '<p class="chargement">Chargement…</p>');
+  }
 
   const dateChoisie = date || aujourdhui();
   const donnees = await api(`/api/tableau-de-bord?date=${dateChoisie}`);
+  etat.tableauDate = dateChoisie;
 
   const carteSite = (entree) => {
     const j = entree.journee;
@@ -1863,6 +1866,10 @@ async function chargerTableauDeBord(date = null) {
         <div class="ligne"><span>Ventes</span><span class="montant">${fc(entree.ventes)}</span></div>
         <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(entree.benefice_entreprise)}</span></div>
         <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(entree.benefice_russell)}</span></div>
+        <div class="ligne"><span>Ravitaillements</span><span class="montant">${entree.nb_ravitaillements ?? 0}</span></div>
+        <div class="ligne"><span>Commission</span><span class="montant">${fc(entree.commissions)}</span></div>
+        <div class="ligne"><span>Transport</span><span class="montant">${fc(entree.transport)}</span></div>
+        <div class="ligne"><span>Consommables</span><span class="montant">${fc(entree.consommables)}</span></div>
         ${entree.ecarts_en_attente || entree.anomalies_en_attente ? `
           <div class="ligne">
             <span>À traiter</span>
@@ -1889,6 +1896,11 @@ async function chargerTableauDeBord(date = null) {
       <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(donnees.totaux.benefice_entreprise)}</span></div>
       <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(donnees.totaux.benefice_russell)}</span></div>
       <div class="ligne"><span>Dépenses</span><span class="montant">${fc(donnees.totaux.depenses_site)}</span></div>
+      <div class="ligne"><span>Ravitaillements total</span><span class="montant">${donnees.totaux.nb_ravitaillements ?? 0}</span></div>
+      <div class="ligne"><span>Commission totale</span><span class="montant">${fc(donnees.totaux.commissions)}</span></div>
+      <div class="ligne"><span>Transport total</span><span class="montant">${fc(donnees.totaux.transport)}</span></div>
+      <div class="ligne"><span>Consommables total</span><span class="montant">${fc(donnees.totaux.consommables)}</span></div>
+      <p style="color:var(--brun-500);font-size:.8rem;margin-top:8px">Mis à jour à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
     </div>
     ${donnees.sites.map(carteSite).join('')}
   `);
@@ -1905,6 +1917,28 @@ async function chargerTableauDeBord(date = null) {
     });
   });
 }
+
+/* ---------------------------------------------------------------------
+ * Synchronisation du tableau de bord
+ *
+ * Les chiffres viennent de la même base que celle des responsables de
+ * site : ils sont à jour dès qu'un ravitaillement, un retour ou une
+ * clôture de journée est enregistré. Tant que le tableau de bord est
+ * affiché, il se rafraîchit seul (toutes les 30 s, et au retour sur
+ * l'application) pour montrer ces changements sans rechargement.
+ * ------------------------------------------------------------------- */
+
+function rafraichirTableauDeBordSiAffiche() {
+  const section = document.getElementById('vue-tableau');
+  const modaleOuverte = elModale && !elModale.hidden;
+
+  if (!section || section.hidden || document.hidden || modaleOuverte || !etat.tableauDate) return;
+
+  chargerTableauDeBord(etat.tableauDate, true).catch(() => {});
+}
+
+setInterval(rafraichirTableauDeBordSiAffiche, 30000);
+document.addEventListener('visibilitychange', rafraichirTableauDeBordSiAffiche);
 
 /* ---------------------------------------------------------------------
  * Démarrage

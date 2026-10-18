@@ -27,6 +27,10 @@ final class TableauDeBordControleur extends ControleurBase
             'benefice_russell' => 0.0,
             'depenses_site' => 0.0,
             'vendeurs_site' => 0,
+            'nb_ravitaillements' => 0,
+            'commissions' => 0.0,
+            'transport' => 0.0,
+            'consommables' => 0.0,
         ];
 
         $resultats = [];
@@ -45,6 +49,10 @@ final class TableauDeBordControleur extends ControleurBase
                 'benefice_russell' => 0.0,
                 'depenses_site' => 0.0,
                 'vendeurs_site' => 0,
+                'nb_ravitaillements' => 0,
+                'commissions' => 0.0,
+                'transport' => 0.0,
+                'consommables' => 0.0,
                 'ecarts_en_attente' => 0,
                 'anomalies_en_attente' => 0,
             ];
@@ -57,12 +65,20 @@ final class TableauDeBordControleur extends ControleurBase
                 $entree['benefice_russell'] = $rapport['benefice_russell'];
                 $entree['depenses_site'] = $rapport['depenses_site'];
                 $entree['vendeurs_site'] = $rapport['vendeurs'];
+                $entree['nb_ravitaillements'] = $rapport['nb_ravitaillements'];
+                $entree['commissions'] = $rapport['commissions'];
+                $entree['transport'] = $rapport['transport'];
+                $entree['consommables'] = $rapport['consommables'];
 
                 $totaux['ventes'] += $rapport['ventes'];
                 $totaux['benefice_entreprise'] += $rapport['benefice_entreprise'];
                 $totaux['benefice_russell'] += $rapport['benefice_russell'];
                 $totaux['depenses_site'] += $rapport['depenses_site'];
                 $totaux['vendeurs_site'] += $rapport['vendeurs'];
+                $totaux['nb_ravitaillements'] += $rapport['nb_ravitaillements'];
+                $totaux['commissions'] += $rapport['commissions'];
+                $totaux['transport'] += $rapport['transport'];
+                $totaux['consommables'] += $rapport['consommables'];
             }
 
             $ecarts = $this->uneLigne(
