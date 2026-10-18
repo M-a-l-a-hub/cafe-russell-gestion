@@ -523,10 +523,20 @@ async function cloturerJournee(journeeId) {
   if (!confirmer) return;
 
   try {
-    await api(`/api/journees/${journeeId}/cloture`, {
+    const resultat = await api(`/api/journees/${journeeId}/cloture`, {
       method: 'POST',
       corps: {},
     });
+
+    if (resultat && resultat.en_attente) {
+      alert(
+        'Demande de clôture conservée sur cet appareil. ' +
+        'Elle sera envoyée dès le retour d’Internet. ' +
+        'La journée ne sera considérée comme clôturée qu’après confirmation du serveur.'
+      );
+      return;
+    }
+
     etat.journee = { ...etat.journee, statut: 'cloturee' };
     await chargerAccueil();
   } catch (e) {
