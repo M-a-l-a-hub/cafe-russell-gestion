@@ -633,14 +633,43 @@ async function ouvrirModaleRavitaillement(activiteId = null) {
  * ------------------------------------------------------------------- */
 
 async function ouvrirModaleCloture(activiteId) {
+  // Quantités reçues par produit pour cette activité : seuls les produits
+  // réellement ravitaillés peuvent faire l'objet d'un retour.
+  let recues = null;
+  try {
+    const details = await api(`/api/activites/${activiteId}/details-correction`);
+    recues = {};
+    (details.ravitaillements || []).forEach((rav) => {
+      rav.lignes.forEach((l) => {
+        recues[l.produit_id] = (recues[l.produit_id] || 0) + Number(l.quantite);
+      });
+    });
+  } catch (e) {
+    recues = null; // hors ligne : on affiche tous les produits, le serveur filtrera
+  }
+
+  const produitsRetour = recues
+    ? etat.produits.filter((p) => recues[p.id] !== undefined)
+    : etat.produits;
+
+  if (recues && produitsRetour.length === 0) {
+    ouvrirModale('Retour et clôture', `
+      <p style="color:var(--brun-500);font-size:.9rem">
+        Aucun ravitaillement n'est enregistré pour cette activité.
+        Ravitaille d'abord le vendeur, ou annule l'activité.
+      </p>
+    `);
+    return;
+  }
+
   ouvrirModale('Retour et clôture', `
     <form id="form-retour">
       <p style="color:var(--brun-500);font-size:.9rem">Quantités non vendues, rapportées par le vendeur.</p>
       <div class="grille-produits">
-        ${etat.produits.map((p) => `
+        ${produitsRetour.map((p) => `
           <div class="ligne-produit">
-            <span>${esc(p.nom)}</span>
-            <input type="number" min="0" step="1" value="0" data-retour="${p.id}">
+            <span>${esc(p.nom)}${recues ? ` <small>(reçu : ${recues[p.id]})</small>` : ''}</span>
+            <input type="number" min="0" ${recues ? `max="${recues[p.id]}"` : ''} step="1" value="0" data-retour="${p.id}">
           </div>
         `).join('')}
       </div>

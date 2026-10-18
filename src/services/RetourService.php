@@ -102,24 +102,7 @@ class RetourService extends ServiceBase
                     $recues[(int) $row['produit_id']] = (int) $row['recue'];
                 }
 
-                foreach ($lignes as $ligne) {
-                    $produitId = $ligne['produit_id'];
-
-                    if (!isset($recues[$produitId])) {
-                        throw new RuntimeException(
-                            "Le produit {$produitId} n’a jamais été "
-                            . "ravitaillé pour cette activité."
-                        );
-                    }
-
-                    if ($ligne['quantite'] > $recues[$produitId]) {
-                        throw new RuntimeException(
-                            "Retour supérieur à la quantité reçue pour le "
-                            . "produit {$produitId} "
-                            . "({$ligne['quantite']} > {$recues[$produitId]})."
-                        );
-                    }
-                }
+                $lignes = $this->verifierLignesRetour($lignes, $recues);
 
                 $stmt = $this->db->prepare(
                     "
@@ -255,22 +238,7 @@ class RetourService extends ServiceBase
                 $recues[(int) $row['produit_id']] = (int) $row['recue'];
             }
 
-            foreach ($lignes as $ligne) {
-                $produitId = $ligne['produit_id'];
-
-                if (!isset($recues[$produitId])) {
-                    throw new RuntimeException(
-                        "Le produit {$produitId} n’a jamais été ravitaillé pour cette activité."
-                    );
-                }
-
-                if ($ligne['quantite'] > $recues[$produitId]) {
-                    throw new RuntimeException(
-                        "Retour supérieur à la quantité reçue pour le produit "
-                        . "{$produitId} ({$ligne['quantite']} > {$recues[$produitId]})."
-                    );
-                }
-            }
+            $lignes = $this->verifierLignesRetour($lignes, $recues);
 
             $anciennes = $this->fetchAllRows(
                 'SELECT produit_id, quantite FROM retour_lignes WHERE retour_id = :id',
@@ -314,5 +282,63 @@ class RetourService extends ServiceBase
                 $motif
             );
         });
+    }
+
+    /**
+     * Contrôle les lignes d'un retour par rapport aux quantités reçues.
+     *
+     * - Une ligne à 0 pour un produit jamais ravitaillé est ignorée
+     *   (un produit absent du retour vaut déjà « retourné à 0 »).
+     * - Une quantité > 0 pour un produit jamais ravitaillé est refusée,
+     *   avec le nom du produit.
+     * - Une quantité supérieure à celle reçue est refusée.
+     *
+     * @param array<int, array{produit_id: int, quantite: int}> $lignes
+     * @param array<int, int> $recues Quantités reçues, indexées par produit_id.
+     *
+     * @return array<int, array{produit_id: int, quantite: int}> Lignes retenues.
+     */
+    private function verifierLignesRetour(array $lignes, array $recues): array
+    {
+        $retenues = [];
+
+        foreach ($lignes as $ligne) {
+            $produitId = $ligne['produit_id'];
+            $quantite = $ligne['quantite'];
+
+            if (!isset($recues[$produitId])) {
+                if ($quantite === 0) {
+                    continue;
+                }
+
+                throw new RuntimeException(
+                    'Le produit « ' . $this->nomProduit($produitId) . ' » '
+                    . 'n’a jamais été ravitaillé pour cette activité : '
+                    . 'impossible d’enregistrer un retour pour ce produit.'
+                );
+            }
+
+            if ($quantite > $recues[$produitId]) {
+                throw new RuntimeException(
+                    'Retour supérieur à la quantité reçue pour « '
+                    . $this->nomProduit($produitId) . ' » '
+                    . "({$quantite} > {$recues[$produitId]})."
+                );
+            }
+
+            $retenues[] = $ligne;
+        }
+
+        return $retenues;
+    }
+
+    private function nomProduit(int $produitId): string
+    {
+        $produit = $this->fetchOne(
+            'SELECT nom FROM produits WHERE id = :id',
+            ['id' => $produitId]
+        );
+
+        return $produit !== null ? (string) $produit['nom'] : "n° {$produitId}";
     }
 }
