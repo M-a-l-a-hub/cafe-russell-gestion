@@ -102,6 +102,175 @@ class RapportService extends ServiceBase
         return $resume;
     }
 
+    /**
+     * Calcule en une seule requête les indicateurs de toutes les journées
+     * d'une période. Les formules reproduisent ActiviteService::calculer()
+     * pour éviter un grand nombre de requêtes sur les bilans annuels.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function pourPeriode(
+        string $dateDebut,
+        string $dateFinExclusive,
+        int $userId,
+        ?int $siteId = null
+    ): array {
+        $params = [
+            'date_debut' => $dateDebut,
+            'date_fin_exclue' => $dateFinExclusive,
+        ];
+        $filtreSite = '';
+
+        if ($siteId !== null) {
+            $filtreSite = ' AND j.site_id = :site_id';
+            $params['site_id'] = $siteId;
+        }
+
+        // Vérification des droits pour chaque site réellement présent dans la période.
+        $sites = $this->fetchAllRows(
+            "
+            SELECT DISTINCT j.site_id
+            FROM journees j
+            WHERE j.date_jour >= CAST(:date_debut AS DATE)
+              AND j.date_jour < CAST(:date_fin_exclue AS DATE)
+              {$filtreSite}
+            ",
+            $params
+        );
+
+        foreach ($sites as $site) {
+            $this->verifierAccesSite($userId, (int) $site['site_id']);
+        }
+
+        $lignes = $this->fetchAllRows(
+            "
+            WITH quantites_par_produit AS (
+                SELECT
+                    r.activite_id,
+                    rl.produit_id,
+                    SUM(rl.quantite) AS quantite_recue,
+                    SUM(rl.quantite * rl.prix_unitaire) AS valeur_vente,
+                    SUM(rl.quantite * rl.cout_unitaire) AS consommables_bruts
+                FROM ravitaillements r
+                INNER JOIN ravitaillement_lignes rl
+                    ON rl.ravitaillement_id = r.id
+                GROUP BY r.activite_id, rl.produit_id
+            ),
+            retours_par_produit AS (
+                SELECT
+                    r.activite_id,
+                    rl.produit_id,
+                    SUM(rl.quantite) AS quantite_retournee
+                FROM retours r
+                INNER JOIN retour_lignes rl
+                    ON rl.retour_id = r.id
+                GROUP BY r.activite_id, rl.produit_id
+            ),
+            produits_par_activite AS (
+                SELECT
+                    q.activite_id,
+                    SUM(
+                        (q.quantite_recue - COALESCE(rt.quantite_retournee, 0))
+                        * (q.valeur_vente / NULLIF(q.quantite_recue, 0))
+                    ) AS ca_brut,
+                    SUM(q.consommables_bruts) AS consommables_bruts,
+                    SUM(
+                        CASE
+                            WHEN q.quantite_recue < COALESCE(rt.quantite_retournee, 0)
+                            THEN 1 ELSE 0
+                        END
+                    ) AS anomalies_quantite
+                FROM quantites_par_produit q
+                LEFT JOIN retours_par_produit rt
+                    ON rt.activite_id = q.activite_id
+                   AND rt.produit_id = q.produit_id
+                GROUP BY q.activite_id
+            ),
+            transport_par_activite AS (
+                SELECT
+                    activite_id,
+                    SUM(transport_par_ravitaillement) AS transport_brut,
+                    COUNT(*) AS nb_ravitaillements
+                FROM ravitaillements
+                GROUP BY activite_id
+            ),
+            resume_activites AS (
+                SELECT
+                    a.id AS activite_id,
+                    a.journee_id,
+                    a.sac_categorie,
+                    COALESCE(p.ca_brut, 0) AS ca_brut,
+                    ROUND(COALESCE(p.ca_brut, 0), 2) AS ventes,
+                    ROUND(COALESCE(t.transport_brut, 0), 2) AS transport,
+                    ROUND(COALESCE(p.consommables_bruts, 0), 2) AS consommables,
+                    ROUND(COALESCE(p.ca_brut, 0) * 25 / 100, 2) AS commission,
+                    ROUND(
+                        COALESCE(p.ca_brut, 0)
+                        - COALESCE(t.transport_brut, 0)
+                        - ROUND(COALESCE(p.ca_brut, 0) * 25 / 100, 2)
+                        - COALESCE(p.consommables_bruts, 0),
+                        2
+                    ) AS benefice,
+                    COALESCE(t.nb_ravitaillements, 0) AS nb_ravitaillements,
+                    COALESCE(p.anomalies_quantite, 0) AS anomalies_quantite
+                FROM activites a
+                LEFT JOIN produits_par_activite p ON p.activite_id = a.id
+                LEFT JOIN transport_par_activite t ON t.activite_id = a.id
+            )
+            SELECT
+                j.id,
+                j.site_id,
+                j.date_jour::text AS date_jour,
+                j.statut::text AS statut,
+                COALESCE(SUM(a.ventes), 0) AS ventes,
+                COALESCE(SUM(a.commission), 0) AS commissions,
+                COALESCE(SUM(a.transport), 0) AS transport,
+                COALESCE(SUM(a.consommables), 0) AS consommables,
+                COALESCE(SUM(a.benefice), 0) AS benefice_activites,
+                COALESCE(SUM(
+                    CASE WHEN a.sac_categorie = 'russell' THEN a.benefice ELSE 0 END
+                ), 0) AS benefice_russell,
+                COALESCE(SUM(
+                    CASE WHEN a.sac_categorie = 'russell' THEN 0 ELSE a.benefice END
+                ), 0) AS benefice_entreprise,
+                COALESCE(SUM(a.nb_ravitaillements), 0) AS nb_ravitaillements,
+                COALESCE(SUM(a.anomalies_quantite), 0) AS anomalies_quantite
+            FROM journees j
+            LEFT JOIN resume_activites a ON a.journee_id = j.id
+            WHERE j.date_jour >= CAST(:date_debut AS DATE)
+              AND j.date_jour < CAST(:date_fin_exclue AS DATE)
+              {$filtreSite}
+            GROUP BY j.id, j.site_id, j.date_jour, j.statut
+            ORDER BY j.date_jour, j.site_id
+            ",
+            $params
+        );
+
+        foreach ($lignes as $ligne) {
+            if ((int) ($ligne['anomalies_quantite'] ?? 0) > 0) {
+                throw new RuntimeException(
+                    'Un retour dépasse la quantité reçue dans cette période. '
+                    . 'Corrige les données de la journée concernée avant de consulter le bilan.'
+                );
+            }
+
+            foreach ([
+                'ventes',
+                'commissions',
+                'transport',
+                'consommables',
+                'benefice_activites',
+                'benefice_entreprise',
+                'benefice_russell',
+            ] as $cle) {
+                $ligne[$cle] = round((float) $ligne[$cle], 2);
+            }
+            $ligne['nb_ravitaillements'] = (int) $ligne['nb_ravitaillements'];
+        }
+
+        return $lignes;
+    }
+
     public function pourVendeur(int $vendeurId, int $userId): array
     {
         $activites = $this->fetchAllRows(
