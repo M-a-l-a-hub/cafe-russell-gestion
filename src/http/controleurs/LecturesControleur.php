@@ -90,8 +90,12 @@ final class LecturesControleur extends ControleurBase
     public function vendeurs(Requete $req): array
     {
         $tous = $req->query('tous') === '1';
+        $disponibles = $req->query('disponibles') === '1';
         $siteId = $req->queryEntierRequis('site_id');
         $this->verifierSite($req, $siteId);
+        if ($disponibles && !$this->estSuperAdmin($req)) {
+            throw new AccesRefuseException('Seul Russell peut affecter un vendeur existant à un autre site.');
+        }
 
         if ($tous && !$this->estSuperAdmin($req)) {
             throw new AccesRefuseException(
@@ -116,9 +120,13 @@ final class LecturesControleur extends ControleurBase
             FROM vendeurs v
             INNER JOIN categories_transport ct
                 ON ct.id = v.categorie_transport_id
-            INNER JOIN site_vendeurs sv
-                ON sv.vendeur_id = v.id AND sv.site_id = :site_id
-            " . ($tous ? '' : 'WHERE v.actif = TRUE AND sv.actif = TRUE') . "
+            " . ($disponibles
+                ? "WHERE v.actif = TRUE AND NOT EXISTS (
+                    SELECT 1 FROM site_vendeurs sx
+                    WHERE sx.vendeur_id = v.id AND sx.site_id = :site_id AND sx.actif = TRUE
+                )"
+                : "INNER JOIN site_vendeurs sv ON sv.vendeur_id = v.id AND sv.site_id = :site_id "
+                    . ($tous ? '' : 'WHERE v.actif = TRUE AND sv.actif = TRUE')) . "
             ORDER BY v.nom, v.prenom
             ",
             ['site_id' => $siteId]
