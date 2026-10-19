@@ -55,6 +55,15 @@ final class VendeursControleur extends ControleurBase
     public function changerCategorieTransport(Requete $req): array
     {
         $id = $req->parametreChemin('id');
+        $siteId = $req->entier('site_id');
+        $this->verifierSite($req, $siteId);
+        $affectation = $this->uneLigne(
+            'SELECT id FROM site_vendeurs WHERE vendeur_id = :vendeur_id AND site_id = :site_id AND actif = TRUE',
+            ['vendeur_id' => $id, 'site_id' => $siteId]
+        );
+        if ($affectation === null) {
+            throw new AccesRefuseException('Ce vendeur n’est pas affecté à ce site.');
+        }
 
         (new VendeurService())->changerCategorieTransport(
             $id,
