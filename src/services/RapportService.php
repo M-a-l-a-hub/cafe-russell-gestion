@@ -186,6 +186,17 @@ class RapportService extends ServiceBase
                    AND rt.produit_id = q.produit_id
                 GROUP BY q.activite_id
             ),
+            retours_sans_reception AS (
+                SELECT
+                    rt.activite_id,
+                    COUNT(*) AS nombre
+                FROM retours_par_produit rt
+                LEFT JOIN quantites_par_produit q
+                    ON q.activite_id = rt.activite_id
+                   AND q.produit_id = rt.produit_id
+                WHERE q.activite_id IS NULL
+                GROUP BY rt.activite_id
+            ),
             transport_par_activite AS (
                 SELECT
                     activite_id,
@@ -212,10 +223,11 @@ class RapportService extends ServiceBase
                         2
                     ) AS benefice,
                     COALESCE(t.nb_ravitaillements, 0) AS nb_ravitaillements,
-                    COALESCE(p.anomalies_quantite, 0) AS anomalies_quantite
+                    (COALESCE(p.anomalies_quantite, 0) + COALESCE(rsr.nombre, 0)) AS anomalies_quantite
                 FROM activites a
                 LEFT JOIN produits_par_activite p ON p.activite_id = a.id
                 LEFT JOIN transport_par_activite t ON t.activite_id = a.id
+                LEFT JOIN retours_sans_reception rsr ON rsr.activite_id = a.id
             )
             SELECT
                 j.id,
@@ -246,7 +258,7 @@ class RapportService extends ServiceBase
             $params
         );
 
-        foreach ($lignes as $ligne) {
+        foreach ($lignes as &$ligne) {
             if ((int) ($ligne['anomalies_quantite'] ?? 0) > 0) {
                 throw new RuntimeException(
                     'Un retour dépasse la quantité reçue dans cette période. '
@@ -267,6 +279,8 @@ class RapportService extends ServiceBase
             }
             $ligne['nb_ravitaillements'] = (int) $ligne['nb_ravitaillements'];
         }
+
+        unset($ligne);
 
         return $lignes;
     }
