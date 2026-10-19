@@ -66,6 +66,39 @@ final class VendeursControleur extends ControleurBase
         return ['vendeur_id' => $id];
     }
 
+    /** POST /api/vendeurs/{id}/affectation {site_id} — réservé à Russell. */
+    public function affecter(Requete $req): array
+    {
+        if (!$this->estSuperAdmin($req)) {
+            throw new AccesRefuseException('Seul Russell peut affecter un vendeur existant à un autre site.');
+        }
+
+        $vendeurId = $req->parametreChemin('id');
+        $siteId = $req->entier('site_id');
+        $this->verifierSite($req, $siteId);
+
+        $vendeur = $this->uneLigne('SELECT id FROM vendeurs WHERE id = :id AND actif = TRUE', ['id' => $vendeurId]);
+        if ($vendeur === null) {
+            throw new HttpException(404, 'introuvable', 'Vendeur introuvable ou désactivé.');
+        }
+
+        $db = getDatabaseConnection();
+        $stmt = $db->prepare("
+            INSERT INTO site_vendeurs (site_id, vendeur_id, affecte_par, actif, date_desaffectation)
+            VALUES (:site_id, :vendeur_id, :user_id, TRUE, NULL)
+            ON CONFLICT (site_id, vendeur_id)
+            DO UPDATE SET actif = TRUE, affecte_par = EXCLUDED.affecte_par,
+                          date_affectation = NOW(), desaffecte_par = NULL, date_desaffectation = NULL
+        ");
+        $stmt->execute([
+            'site_id' => $siteId,
+            'vendeur_id' => $vendeurId,
+            'user_id' => $this->utilisateurId($req),
+        ]);
+
+        return ['vendeur_id' => $vendeurId, 'site_id' => $siteId, 'statut' => 'affecte'];
+    }
+
     /** POST /api/vendeurs/{id}/desactivation {motif} */
     public function desactiver(Requete $req): array
     {
