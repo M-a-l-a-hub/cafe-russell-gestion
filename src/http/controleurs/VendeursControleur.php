@@ -36,13 +36,16 @@ final class VendeursControleur extends ControleurBase
     /** POST /api/vendeurs {nom, prenom?, telephone?, categorie_transport_id, periode_habituelle?} */
     public function creer(Requete $req): Resultat
     {
+        $siteId = $req->entier('site_id');
+        $this->verifierSite($req, $siteId);
         $id = (new VendeurService())->creer(
             $req->texte('nom', 100),
             $req->texteOptionnel('prenom', 100),
             $req->texteOptionnel('telephone', 30),
             $req->entier('categorie_transport_id'),
             $req->choixOptionnel('periode_habituelle', ['matin', 'soir', 'journee']),
-            $this->utilisateurId($req)
+            $this->utilisateurId($req),
+            $siteId
         );
 
         return new Resultat(201, ['vendeur_id' => $id]);
@@ -67,9 +70,12 @@ final class VendeursControleur extends ControleurBase
     public function desactiver(Requete $req): array
     {
         $id = $req->parametreChemin('id');
+        $siteId = $req->entier('site_id');
+        $this->verifierSite($req, $siteId);
 
         (new VendeurService())->desactiver(
             $id,
+            $siteId,
             $this->utilisateurId($req),
             $req->texte('motif')
         );
