@@ -217,11 +217,16 @@ nav.bas {
   display: flex;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 5;
-}
   overflow-x: auto;
+  overflow-y: hidden;
   justify-content: flex-start;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+nav.bas::-webkit-scrollbar { display: none; }
 nav.bas button {
-  flex: 1 0 44px;
+  flex: 0 0 68px;
+  min-width: 68px;
   white-space: nowrap;
   background: none;
   border: none;
@@ -232,26 +237,37 @@ nav.bas button {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 3px;
 }
-nav.bas button .icone { width: 21px; height: 21px; }
+nav.bas button .icone { width: 21px; height: 21px; flex-shrink: 0; }
 nav.bas button.actif { color: var(--terracotta-700); font-weight: 600; }
 
 /* Sur grand écran : navigation latérale au lieu du bas */
 @media (min-width: 860px) {
   .app { flex-direction: row; }
   nav.bas {
-    position: static;
+    position: sticky;
+    top: 0;
+    bottom: auto;
+    left: auto;
+    right: auto;
     flex-direction: column;
     width: 200px;
+    min-width: 200px;
     border-top: none;
     border-right: 1px solid var(--creme-2);
     padding-top: 12px;
+    padding-bottom: 0;
     height: 100vh;
-    position: sticky;
-    top: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    justify-content: flex-start;
   }
   nav.bas button {
+    flex: 0 0 auto;
+    min-width: 0;
+    width: 100%;
     flex-direction: row;
     justify-content: flex-start;
     padding: 12px 20px;
