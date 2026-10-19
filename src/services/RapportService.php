@@ -195,6 +195,7 @@ class RapportService extends ServiceBase
                     ON q.activite_id = rt.activite_id
                    AND q.produit_id = rt.produit_id
                 WHERE q.activite_id IS NULL
+                  AND rt.quantite_retournee > 0
                 GROUP BY rt.activite_id
             ),
             transport_par_activite AS (
