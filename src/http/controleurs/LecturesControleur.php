@@ -91,6 +91,12 @@ final class LecturesControleur extends ControleurBase
     {
         $tous = $req->query('tous') === '1';
 
+        if ($tous && !$this->estSuperAdmin($req)) {
+            throw new AccesRefuseException(
+                'La liste des vendeurs désactivés est réservée au super administrateur.'
+            );
+        }
+
         return $this->lignes(
             "
             SELECT
