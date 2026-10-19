@@ -1040,8 +1040,12 @@ async function chargerVendeurs() {
   const vendeurs = await api('/api/vendeurs?site_id=' + encodeURIComponent(etat.siteId));
   etat.vendeurs = vendeurs;
 
+  const boutonAffectation = etat.utilisateur.role === 'super_admin'
+    ? '<button class="secondaire" id="btn-affecter-vendeur" style="margin:0 0 14px 8px">Affecter un vendeur existant</button>'
+    : '';
   const html = `
     <button class="principal" id="btn-nouveau-vendeur" style="margin-bottom:14px">+ Nouveau vendeur</button>
+    ${boutonAffectation}
     ${vendeurs.map((v) => `
       <div class="carte">
         <div class="carte-titre">
@@ -1063,6 +1067,8 @@ async function chargerVendeurs() {
   afficherVue('vendeurs', html);
 
   document.getElementById('btn-nouveau-vendeur').addEventListener('click', ouvrirModaleNouveauVendeur);
+  const boutonAffecter = document.getElementById('btn-affecter-vendeur');
+  if (boutonAffecter) boutonAffecter.addEventListener('click', ouvrirModaleAffecterVendeur);
 
   document.querySelectorAll('[data-vendeur]').forEach((select) => {
     select.addEventListener('change', async () => {
@@ -1383,6 +1389,45 @@ function ouvrirModaleAffecterResponsable(siteId, responsables) {
       document.getElementById('erreur-ar').hidden = false;
     }
   });
+}
+
+async function ouvrirModaleAffecterVendeur() {
+  try {
+    const disponibles = await api('/api/vendeurs?site_id=' + encodeURIComponent(etat.siteId) + '&disponibles=1');
+    if (!disponibles.length) {
+      alert('Aucun vendeur actif non affecté à ce site.');
+      return;
+    }
+    ouvrirModale('Affecter un vendeur existant', `
+      <form id="form-affecter-vendeur">
+        <div class="champ">
+          <label>Vendeur</label>
+          <select id="av-vendeur" required>
+            ${disponibles.map(v => `<option value="${v.id}">${esc(v.prenom ? v.prenom + ' ' + v.nom : v.nom)} — ${esc(v.code)}</option>`).join('')}
+          </select>
+        </div>
+        <p class="message-erreur" id="erreur-av" hidden></p>
+        <button class="principal" type="submit">Affecter à ce site</button>
+      </form>
+    `);
+    document.getElementById('form-affecter-vendeur').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      try {
+        await api('/api/vendeurs/' + document.getElementById('av-vendeur').value + '/affectation', {
+          method: 'POST',
+          corps: { site_id: etat.siteId },
+        });
+        fermerModale();
+        await chargerVendeurs();
+      } catch (e) {
+        const erreur = document.getElementById('erreur-av');
+        erreur.textContent = e.message;
+        erreur.hidden = false;
+      }
+    });
+  } catch (e) {
+    alert(e.message || 'Impossible de charger les vendeurs disponibles.');
+  }
 }
 
 function ouvrirModaleNouveauVendeur() {
