@@ -1901,8 +1901,8 @@ async function chargerBilans() {
       <h3>${esc(s.site.nom)}</h3>
       <div class="ligne"><span>Chiffre d’affaires</span><span class="montant">${fc(s.totaux.ventes)}</span></div>
       <div class="ligne"><span>Ravitaillements</span><span class="montant">${Math.round(Number(s.totaux.nb_ravitaillements || 0))}</span></div>
-      <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(s.totaux.benefice_entreprise)}</span></div>
-      <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(s.totaux.benefice_russell)}</span></div>
+      <div class="ligne"><span>Bénéfice des activités — entreprise</span><span class="montant">${fc(s.totaux.benefice_entreprise)}</span></div>
+      <div class="ligne"><span>Bénéfice des activités — Russell</span><span class="montant">${fc(s.totaux.benefice_russell)}</span></div>
       <div class="ligne"><span>Commissions</span><span class="montant">${fc(s.totaux.commissions)}</span></div>
       <div class="ligne"><span>Transport</span><span class="montant">${fc(s.totaux.transport)}</span></div>
       <div class="ligne"><span>Consommables</span><span class="montant">${fc(s.totaux.consommables)}</span></div>
@@ -1978,8 +1978,8 @@ async function chargerBilans() {
       <h3>Résumé — ${siteChoisi === 'tous' ? 'toute l’entreprise' : esc((etat.sites.find((s) => String(s.id) === siteChoisi) || {}).nom || 'site sélectionné')}</h3>
       <div class="ligne"><span>Chiffre d’affaires</span><strong class="montant">${fc(t.ventes)}</strong></div>
       <div class="ligne"><span>Ravitaillements</span><span class="montant">${Math.round(Number(t.nb_ravitaillements || 0))}</span></div>
-      <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(t.benefice_entreprise)}</span></div>
-      <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(t.benefice_russell)}</span></div>
+      <div class="ligne"><span>Bénéfice des activités — entreprise</span><span class="montant">${fc(t.benefice_entreprise)}</span></div>
+      <div class="ligne"><span>Bénéfice des activités — Russell</span><span class="montant">${fc(t.benefice_russell)}</span></div>
       <div class="ligne"><span>Commissions des vendeurs</span><span class="montant">${fc(t.commissions)}</span></div>
       <div class="ligne"><span>Transport</span><span class="montant">${fc(t.transport)}</span></div>
       <div class="ligne"><span>Consommables</span><span class="montant">${fc(t.consommables)}</span></div>
