@@ -23,7 +23,8 @@ final class VendeurService extends ServiceBase
         ?string $telephone,
         int $categorieTransportId,
         ?string $periodeHabituelle,
-        int $userId
+        int $userId,
+        int $siteId
     ): int {
         $this->verifierUtilisateur($userId);
         $this->verifierCategorieTransport($categorieTransportId);
@@ -38,7 +39,8 @@ final class VendeurService extends ServiceBase
             $telephone,
             $categorieTransportId,
             $periodeHabituelle,
-            $userId
+            $userId,
+            $siteId
         ): int {
             $code = $this->genererCode($nom, $prenom);
 
@@ -65,6 +67,11 @@ final class VendeurService extends ServiceBase
             ]);
 
             $id = (int) $stmt->fetchColumn();
+
+            $affectation = $this->db->prepare(
+                'INSERT INTO site_vendeurs (site_id, vendeur_id, affecte_par) VALUES (:site_id, :vendeur_id, :user_id)'
+            );
+            $affectation->execute(['site_id' => $siteId, 'vendeur_id' => $id, 'user_id' => $userId]);
 
             AuditService::enregistrer(
                 $this->db,
@@ -174,11 +181,11 @@ final class VendeurService extends ServiceBase
         });
     }
 
-    public function desactiver(int $vendeurId, int $userId, string $motif): void
+    public function desactiver(int $vendeurId, int $siteId, int $userId, string $motif): void
     {
         $this->verifierUtilisateur($userId);
 
-        $this->transaction(function () use ($vendeurId, $userId, $motif): void {
+        $this->transaction(function () use ($vendeurId, $siteId, $userId, $motif): void {
             $vendeur = $this->fetchOne(
                 'SELECT id, actif FROM vendeurs WHERE id = :id FOR UPDATE',
                 ['id' => $vendeurId]
@@ -192,9 +199,17 @@ final class VendeurService extends ServiceBase
                 return;
             }
 
+            $affectation = $this->fetchOne(
+                'SELECT id, actif FROM site_vendeurs WHERE vendeur_id = :vendeur_id AND site_id = :site_id FOR UPDATE',
+                ['vendeur_id' => $vendeurId, 'site_id' => $siteId]
+            );
+            if ($affectation === null || !(bool) $affectation['actif']) {
+                throw new RuntimeException('Ce vendeur n’est pas affecté à ce site.');
+            }
+
             $enCours = $this->fetchOne(
-                "SELECT id FROM activites WHERE vendeur_id = :id AND statut = 'en_cours' LIMIT 1",
-                ['id' => $vendeurId]
+                "SELECT a.id FROM activites a INNER JOIN journees j ON j.id = a.journee_id WHERE a.vendeur_id = :id AND j.site_id = :site_id AND a.statut = 'en_cours' LIMIT 1",
+                ['id' => $vendeurId, 'site_id' => $siteId]
             );
 
             if ($enCours !== null) {
@@ -204,9 +219,9 @@ final class VendeurService extends ServiceBase
             }
 
             $stmt = $this->db->prepare(
-                'UPDATE vendeurs SET actif = FALSE, updated_at = NOW() WHERE id = :id'
+                'UPDATE site_vendeurs SET actif = FALSE, desaffecte_par = :user_id, date_desaffectation = NOW() WHERE vendeur_id = :vendeur_id AND site_id = :site_id'
             );
-            $stmt->execute(['id' => $vendeurId]);
+            $stmt->execute(['user_id' => $userId, 'vendeur_id' => $vendeurId, 'site_id' => $siteId]);
 
             AuditService::enregistrer(
                 $this->db,
@@ -215,8 +230,8 @@ final class VendeurService extends ServiceBase
                 'vendeurs',
                 $vendeurId,
                 null,
-                ['actif' => true],
-                ['actif' => false],
+                ['site_id' => $siteId, 'affectation_active' => true],
+                ['site_id' => $siteId, 'affectation_active' => false],
                 $motif
             );
         });
