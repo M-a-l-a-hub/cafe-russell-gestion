@@ -90,6 +90,8 @@ final class LecturesControleur extends ControleurBase
     public function vendeurs(Requete $req): array
     {
         $tous = $req->query('tous') === '1';
+        $siteId = $req->queryEntierRequis('site_id');
+        $this->verifierSite($req, $siteId);
 
         if ($tous && !$this->estSuperAdmin($req)) {
             throw new AccesRefuseException(
@@ -108,13 +110,18 @@ final class LecturesControleur extends ControleurBase
                 v.periode_habituelle,
                 v.actif,
                 v.categorie_transport_id,
-                ct.code AS categorie_transport
+                ct.code AS categorie_transport,
+                sv.actif AS affectation_active,
+                sv.site_id
             FROM vendeurs v
             INNER JOIN categories_transport ct
                 ON ct.id = v.categorie_transport_id
-            " . ($tous ? '' : 'WHERE v.actif = TRUE') . "
+            INNER JOIN site_vendeurs sv
+                ON sv.vendeur_id = v.id AND sv.site_id = :site_id
+            " . ($tous ? '' : 'WHERE v.actif = TRUE AND sv.actif = TRUE') . "
             ORDER BY v.nom, v.prenom
-            "
+            ",
+            ['site_id' => $siteId]
         );
     }
 
