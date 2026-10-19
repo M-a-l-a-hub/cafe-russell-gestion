@@ -153,6 +153,9 @@ formConnexion.addEventListener('submit', async (ev) => {
       },
     });
 
+    // Le cache hors ligne contient des réponses privées : repartir proprement
+    // lors de chaque nouvelle connexion pour éviter de réutiliser celles d'un autre compte.
+    await HorsLigne.viderCache();
     etat.utilisateur = utilisateur;
     etat.csrf = csrf;
     formConnexion.mot_de_passe.value = '';
