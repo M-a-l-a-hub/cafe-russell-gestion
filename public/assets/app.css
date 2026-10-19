@@ -218,8 +218,11 @@ nav.bas {
   padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 5;
 }
+  overflow-x: auto;
+  justify-content: flex-start;
 nav.bas button {
-  flex: 1;
+  flex: 1 0 44px;
+  white-space: nowrap;
   background: none;
   border: none;
   padding: 10px 4px 8px;
