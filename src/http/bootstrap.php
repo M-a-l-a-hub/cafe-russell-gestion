@@ -17,6 +17,6 @@ require_once __DIR__ . '/Routeur.php';
 require_once __DIR__ . '/Application.php';
 require_once __DIR__ . '/ControleurBase.php';
 
-foreach (['Auth', 'Lectures', 'Journees', 'Activites', 'Finances', 'Sacs', 'Vendeurs', 'Sites', 'Responsables', 'TableauDeBord', 'Bilans'] as $nom) {
+foreach (['Auth', 'MotDePasse', 'Lectures', 'Journees', 'Activites', 'Finances', 'Sacs', 'Vendeurs', 'Sites', 'Responsables', 'TableauDeBord', 'Bilans'] as $nom) {
     require_once __DIR__ . "/controleurs/{$nom}Controleur.php";
 }
