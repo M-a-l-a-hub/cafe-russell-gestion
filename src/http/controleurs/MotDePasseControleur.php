@@ -11,6 +11,10 @@ final class MotDePasseControleur extends ControleurBase
     /** POST /api/mot-de-passe : modification du mot de passe du compte connecté. */
     public function changer(Requete $req): array
     {
+        if (!in_array($req->utilisateur['role'] ?? '', ['super_admin', 'responsable'], true)) {
+            throw new HttpException(403, 'acces_refuse', 'Seuls Russell et les responsables peuvent modifier leur mot de passe ici.');
+        }
+
         $userId = $this->utilisateurId($req);
 
         (new MotDePasseService())->changer(
