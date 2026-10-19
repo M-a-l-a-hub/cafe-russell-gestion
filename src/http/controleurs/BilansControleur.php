@@ -63,7 +63,28 @@ final class BilansControleur extends ControleurBase
             }
         } else {
             $sites = $this->lignes(
-                'SELECT id, code, nom FROM sites WHERE actif = TRUE ORDER BY nom'
+                "
+                SELECT s.id, s.code, s.nom
+                FROM sites s
+                WHERE s.actif = TRUE
+                   OR EXISTS (
+                       SELECT 1 FROM journees j
+                       WHERE j.site_id = s.id
+                         AND j.date_jour >= CAST(:date_debut AS DATE)
+                         AND j.date_jour < CAST(:date_fin_exclue AS DATE)
+                   )
+                   OR EXISTS (
+                       SELECT 1 FROM depenses d
+                       WHERE d.site_id = s.id
+                         AND d.date_depense >= CAST(:date_debut AS DATE)
+                         AND d.date_depense < CAST(:date_fin_exclue AS DATE)
+                   )
+                ORDER BY s.nom
+                ",
+                [
+                    'date_debut' => $debut->format('Y-m-d'),
+                    'date_fin_exclue' => $finExclusive->format('Y-m-d'),
+                ]
             );
         }
 
