@@ -1997,8 +1997,8 @@ async function chargerBilans() {
   });
   document.getElementById('bilan-date').addEventListener('change', (ev) => {
     let valeur = ev.target.value;
-    if (periode === 'mensuel' && /^\\d{4}-\\d{2}$/.test(valeur)) valeur += '-01';
-    if (periode === 'annuel' && /^\\d{4}$/.test(valeur)) valeur += '-01-01';
+    if (periode === 'mensuel' && /^\d{4}-\d{2}$/.test(valeur)) valeur += '-01';
+    if (periode === 'annuel' && /^\d{4}$/.test(valeur)) valeur += '-01-01';
     etat.bilanDate = valeur || aujourdhui();
     chargerBilans();
   });
