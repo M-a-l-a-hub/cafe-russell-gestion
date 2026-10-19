@@ -22,10 +22,12 @@ $vendeursCtrl = new VendeursControleur();
 $sitesCtrl = new SitesControleur();
 $responsablesCtrl = new ResponsablesControleur();
 $tableauDeBordCtrl = new TableauDeBordControleur();
+$bilansCtrl = new BilansControleur();
 
 $russell = ['role' => 'super_admin'];
 
 $r->get('/api/tableau-de-bord', [$tableauDeBordCtrl, 'afficher'], $russell);
+$r->get('/api/bilans', [$bilansCtrl, 'afficher']);
 
 // --- Session -----------------------------------------------------------
 $r->get('/api/sante', [$auth, 'sante'], ['public' => true, 'sans_session' => true]);
