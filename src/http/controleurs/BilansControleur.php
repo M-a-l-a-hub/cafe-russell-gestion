@@ -98,28 +98,6 @@ final class BilansControleur extends ControleurBase
             $joursSite[$id] = [];
         }
 
-        $paramsJournees = [
-            'date_debut' => $debut->format('Y-m-d'),
-            'date_fin_exclue' => $finExclusive->format('Y-m-d'),
-        ];
-        $filtreSite = '';
-        if ($siteId !== null) {
-            $filtreSite = ' AND j.site_id = :site_id';
-            $paramsJournees['site_id'] = $siteId;
-        }
-
-        $journees = $this->lignes(
-            "
-            SELECT j.id, j.site_id, j.date_jour, j.statut
-            FROM journees j
-            WHERE j.date_jour >= CAST(:date_debut AS DATE)
-              AND j.date_jour < CAST(:date_fin_exclue AS DATE)
-              {$filtreSite}
-            ORDER BY j.date_jour, j.site_id
-            ",
-            $paramsJournees
-        );
-
         $rapportService = new RapportService();
         $clesRapport = [
             'ventes',
@@ -132,6 +110,14 @@ final class BilansControleur extends ControleurBase
             'nb_ravitaillements',
         ];
 
+        // Agrégation SQL par période : évite une requête par activité et par journée.
+        $journees = $rapportService->pourPeriode(
+            $debut->format('Y-m-d'),
+            $finExclusive->format('Y-m-d'),
+            $userId,
+            $siteId
+        );
+
         foreach ($journees as $journee) {
             $idSite = (int) $journee['site_id'];
             $date = (string) $journee['date_jour'];
@@ -139,13 +125,12 @@ final class BilansControleur extends ControleurBase
                 continue;
             }
 
-            $rapport = $rapportService->pourJournee((int) $journee['id'], $userId);
             $jour = $this->totauxVides();
             $jour['date'] = $date;
             $jour['statut_journee'] = (string) $journee['statut'];
 
             foreach ($clesRapport as $cle) {
-                $valeur = (float) ($rapport[$cle] ?? 0);
+                $valeur = (float) ($journee[$cle] ?? 0);
                 $jour[$cle] = $valeur;
                 $totauxSite[$idSite][$cle] += $valeur;
             }
