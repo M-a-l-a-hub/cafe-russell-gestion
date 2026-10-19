@@ -1900,6 +1900,9 @@ async function chargerBilans() {
     <div class="carte">
       <h3>${esc(s.site.nom)}</h3>
       <div class="ligne"><span>Chiffre d’affaires</span><span class="montant">${fc(s.totaux.ventes)}</span></div>
+      <div class="ligne"><span>Ravitaillements</span><span class="montant">${Math.round(Number(s.totaux.nb_ravitaillements || 0))}</span></div>
+      <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(s.totaux.benefice_entreprise)}</span></div>
+      <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(s.totaux.benefice_russell)}</span></div>
       <div class="ligne"><span>Commissions</span><span class="montant">${fc(s.totaux.commissions)}</span></div>
       <div class="ligne"><span>Transport</span><span class="montant">${fc(s.totaux.transport)}</span></div>
       <div class="ligne"><span>Consommables</span><span class="montant">${fc(s.totaux.consommables)}</span></div>
@@ -1910,7 +1913,7 @@ async function chargerBilans() {
 
   const somme = (liste, cle) => liste.reduce((total, ligne) => total + Number(ligne[cle] || 0), 0);
   let lignesPeriode = donnees.jours;
-  let enteteTable = '<th>Date</th><th>Journée</th><th>Ventes</th><th>Commissions</th><th>Dépenses</th><th>Résultat estimé</th>';
+  let enteteTable = '<th>Date</th><th>Journée</th><th>Ventes</th><th>Ravitaillements</th><th>Commissions</th><th>Dépenses</th><th>Résultat estimé</th>';
 
   if (periode === 'annuel') {
     const parMois = new Map();
@@ -1924,11 +1927,12 @@ async function chargerBilans() {
       statut_journee: jours.some((j) => j.statut_journee === 'ouverte') ? 'ouverte' : 'cloturee',
       ventes: somme(jours, 'ventes'),
       commissions: somme(jours, 'commissions'),
+      nb_ravitaillements: somme(jours, 'nb_ravitaillements'),
       depenses_site: somme(jours, 'depenses_site'),
       depenses_generales: somme(jours, 'depenses_generales'),
       resultat_estime: somme(jours, 'resultat_estime'),
     }));
-    enteteTable = '<th>Mois</th><th>Journées enregistrées</th><th>Ventes</th><th>Commissions</th><th>Dépenses</th><th>Résultat estimé</th>';
+    enteteTable = '<th>Mois</th><th>Journées enregistrées</th><th>Ventes</th><th>Ravitaillements</th><th>Commissions</th><th>Dépenses</th><th>Résultat estimé</th>';
   }
 
   const lignesHtml = lignesPeriode.length ? lignesPeriode.map((jour) => {
@@ -1942,11 +1946,12 @@ async function chargerBilans() {
       <td>${esc(dateTexte)}</td>
       <td>${esc(statut)}</td>
       <td>${fc(jour.ventes)}</td>
+      <td>${Math.round(Number(jour.nb_ravitaillements || 0))}</td>
       <td>${fc(jour.commissions)}</td>
       <td>${fc(Number(jour.depenses_site || 0) + Number(jour.depenses_generales || 0))}</td>
       <td><strong>${fc(jour.resultat_estime)}</strong></td>
     </tr>`;
-  }).join('') : '<tr><td colspan="6">Aucune opération enregistrée sur cette période.</td></tr>';
+  }).join('') : '<tr><td colspan="7">Aucune opération enregistrée sur cette période.</td></tr>';
 
   afficherVue('bilans', `
     <div class="carte">
@@ -1972,6 +1977,9 @@ async function chargerBilans() {
     <div class="carte">
       <h3>Résumé — ${siteChoisi === 'tous' ? 'toute l’entreprise' : esc((etat.sites.find((s) => String(s.id) === siteChoisi) || {}).nom || 'site sélectionné')}</h3>
       <div class="ligne"><span>Chiffre d’affaires</span><strong class="montant">${fc(t.ventes)}</strong></div>
+      <div class="ligne"><span>Ravitaillements</span><span class="montant">${Math.round(Number(t.nb_ravitaillements || 0))}</span></div>
+      <div class="ligne"><span>Bénéfice entreprise</span><span class="montant">${fc(t.benefice_entreprise)}</span></div>
+      <div class="ligne"><span>Bénéfice Russell</span><span class="montant">${fc(t.benefice_russell)}</span></div>
       <div class="ligne"><span>Commissions des vendeurs</span><span class="montant">${fc(t.commissions)}</span></div>
       <div class="ligne"><span>Transport</span><span class="montant">${fc(t.transport)}</span></div>
       <div class="ligne"><span>Consommables</span><span class="montant">${fc(t.consommables)}</span></div>
