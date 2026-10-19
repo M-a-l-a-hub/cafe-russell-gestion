@@ -13,6 +13,7 @@ declare(strict_types=1);
 $r = new Routeur();
 
 $auth = new AuthControleur();
+$motDePasse = new MotDePasseControleur();
 $lectures = new LecturesControleur();
 $journees = new JourneesControleur();
 $activites = new ActivitesControleur();
@@ -34,6 +35,7 @@ $r->get('/api/sante', [$auth, 'sante'], ['public' => true, 'sans_session' => tru
 $r->post('/api/login', [$auth, 'connexion'], ['public' => true]);
 $r->post('/api/logout', [$auth, 'deconnexion']);
 $r->get('/api/moi', [$auth, 'moi']);
+$r->post('/api/mot-de-passe', [$motDePasse, 'changer']);
 
 // --- Lectures ----------------------------------------------------------
 $r->get('/api/sites', [$lectures, 'sites']);
