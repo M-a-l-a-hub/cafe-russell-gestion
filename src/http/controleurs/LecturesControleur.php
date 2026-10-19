@@ -115,8 +115,7 @@ final class LecturesControleur extends ControleurBase
                 v.actif,
                 v.categorie_transport_id,
                 ct.code AS categorie_transport,
-                sv.actif AS affectation_active,
-                sv.site_id
+                " . ($disponibles ? "NULL AS affectation_active, CAST(:site_id AS BIGINT) AS site_id" : "sv.actif AS affectation_active, sv.site_id") . "
             FROM vendeurs v
             INNER JOIN categories_transport ct
                 ON ct.id = v.categorie_transport_id
