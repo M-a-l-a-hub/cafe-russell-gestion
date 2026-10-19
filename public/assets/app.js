@@ -1078,7 +1078,7 @@ async function chargerVendeurs() {
       try {
         await api(`/api/vendeurs/${vendeurId}/categorie-transport`, {
           method: 'POST',
-          corps: { categorie_transport_id: categorieId },
+          corps: { categorie_transport_id: categorieId, site_id: etat.siteId },
         });
       } catch (e) {
         alert(e.message);
