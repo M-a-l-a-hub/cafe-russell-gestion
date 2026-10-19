@@ -27,6 +27,9 @@ const etat = {
   depensesJour: [],
   journee: null,
   rapport: null,
+  bilanPeriode: 'hebdomadaire',
+  bilanDate: null,
+  bilanSiteId: 'tous',
 };
 
 /* ---------------------------------------------------------------------
@@ -306,7 +309,7 @@ async function allerA(vue) {
     b.classList.toggle('actif', b.dataset.vue === vue);
   });
 
-  if (etat.siteId == null && vue !== 'tableau') {
+  if (etat.siteId == null && vue !== 'tableau' && vue !== 'bilans') {
     afficherVue(vue, '<p class="liste-vide">Aucun site pour le moment. Ouvre le menu puis choisis « Nouveau site ».</p>');
     return;
   }
@@ -319,6 +322,7 @@ async function allerA(vue) {
     sacs: chargerSacs,
     argent: chargerArgent,
     tableau: chargerTableauDeBord,
+    bilans: chargerBilans,
   };
 
   if (!chargeurs[vue]) return;
@@ -1846,6 +1850,165 @@ function ouvrirModaleCorrectionDepense(depense) {
       document.getElementById('erreur-cdep').hidden = false;
     }
   });
+}
+
+/* ---------------------------------------------------------------------
+ * Bilans périodiques : semaine commerciale, mois et année
+ * ------------------------------------------------------------------- */
+
+async function chargerBilans() {
+  afficherVue('bilans', '<p class="chargement">Chargement du bilan…</p>');
+
+  const periode = etat.bilanPeriode || 'hebdomadaire';
+  const date = etat.bilanDate || aujourdhui();
+  const estRussell = etat.utilisateur.role === 'super_admin';
+  const siteChoisi = estRussell ? (etat.bilanSiteId || 'tous') : String(etat.siteId);
+  const params = new URLSearchParams({ periode, date });
+  if (siteChoisi !== 'tous') params.set('site_id', siteChoisi);
+
+  const donnees = await api('/api/bilans?' + params.toString());
+  const libelles = {
+    hebdomadaire: 'Bilan hebdomadaire (lundi au samedi)',
+    mensuel: 'Bilan mensuel',
+    annuel: 'Bilan annuel',
+  };
+  const debut = donnees.date_debut;
+  const fin = donnees.date_fin;
+  const periodeLisible = debut === fin
+    ? dateLisible(debut + 'T12:00:00')
+    : dateLisible(debut + 'T12:00:00') + ' — ' + dateLisible(fin + 'T12:00:00');
+
+  const selecteurSite = estRussell ? `
+    <div class="champ">
+      <label for="bilan-site">Périmètre</label>
+      <select id="bilan-site">
+        <option value="tous" ${siteChoisi === 'tous' ? 'selected' : ''}>Toute l’entreprise</option>
+        ${etat.sites.map((s) => `<option value="${s.id}" ${String(s.id) === siteChoisi ? 'selected' : ''}>${esc(s.nom)}</option>`).join('')}
+      </select>
+    </div>
+  ` : '';
+
+  const t = donnees.totaux;
+  const carteChiffre = (titre, montant) => `
+    <div class="carte">
+      <div class="carte-titre"><strong>${titre}</strong></div>
+      <div class="montant" style="font-size:1.35rem;margin-top:8px">${fc(montant)}</div>
+    </div>
+  `;
+
+  const siteCards = estRussell && siteChoisi === 'tous' ? donnees.sites.map((s) => `
+    <div class="carte">
+      <h3>${esc(s.site.nom)}</h3>
+      <div class="ligne"><span>Chiffre d’affaires</span><span class="montant">${fc(s.totaux.ventes)}</span></div>
+      <div class="ligne"><span>Commissions</span><span class="montant">${fc(s.totaux.commissions)}</span></div>
+      <div class="ligne"><span>Transport</span><span class="montant">${fc(s.totaux.transport)}</span></div>
+      <div class="ligne"><span>Consommables</span><span class="montant">${fc(s.totaux.consommables)}</span></div>
+      <div class="ligne"><span>Dépenses du site</span><span class="montant">${fc(s.totaux.depenses_site)}</span></div>
+      <div class="ligne"><strong>Résultat estimé du site</strong><strong class="montant">${fc(s.totaux.resultat_estime)}</strong></div>
+    </div>
+  `).join('') : '';
+
+  const somme = (liste, cle) => liste.reduce((total, ligne) => total + Number(ligne[cle] || 0), 0);
+  let lignesPeriode = donnees.jours;
+  let enteteTable = '<th>Date</th><th>Journée</th><th>Ventes</th><th>Commissions</th><th>Dépenses</th><th>Résultat estimé</th>';
+
+  if (periode === 'annuel') {
+    const parMois = new Map();
+    for (const jour of donnees.jours) {
+      const cle = jour.date.slice(0, 7);
+      if (!parMois.has(cle)) parMois.set(cle, []);
+      parMois.get(cle).push(jour);
+    }
+    lignesPeriode = [...parMois.entries()].map(([mois, jours]) => ({
+      date: mois,
+      statut_journee: jours.some((j) => j.statut_journee === 'ouverte') ? 'ouverte' : 'cloturee',
+      ventes: somme(jours, 'ventes'),
+      commissions: somme(jours, 'commissions'),
+      depenses_site: somme(jours, 'depenses_site'),
+      depenses_generales: somme(jours, 'depenses_generales'),
+      resultat_estime: somme(jours, 'resultat_estime'),
+    }));
+    enteteTable = '<th>Mois</th><th>Journées enregistrées</th><th>Ventes</th><th>Commissions</th><th>Dépenses</th><th>Résultat estimé</th>';
+  }
+
+  const lignesHtml = lignesPeriode.length ? lignesPeriode.map((jour) => {
+    const dateTexte = periode === 'annuel'
+      ? new Date(jour.date + '-15T12:00:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+      : dateLisible(jour.date + 'T12:00:00');
+    const statut = periode === 'annuel'
+      ? donnees.jours.filter((j) => j.date.startsWith(jour.date)).length + ' jour(s)'
+      : (!jour.jour_ouvrable ? 'Dimanche — activité exceptionnelle' : (jour.statut_journee || 'Dépense sans journée'));
+    return `<tr>
+      <td>${esc(dateTexte)}</td>
+      <td>${esc(statut)}</td>
+      <td>${fc(jour.ventes)}</td>
+      <td>${fc(jour.commissions)}</td>
+      <td>${fc(Number(jour.depenses_site || 0) + Number(jour.depenses_generales || 0))}</td>
+      <td><strong>${fc(jour.resultat_estime)}</strong></td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="6">Aucune opération enregistrée sur cette période.</td></tr>';
+
+  afficherVue('bilans', `
+    <div class="carte">
+      <h2>Bilans financiers</h2>
+      <p>${libelles[periode]} · ${esc(periodeLisible)}</p>
+      <div class="champ">
+        <label for="bilan-periode">Type de bilan</label>
+        <select id="bilan-periode">
+          <option value="hebdomadaire" ${periode === 'hebdomadaire' ? 'selected' : ''}>Hebdomadaire (lundi–samedi)</option>
+          <option value="mensuel" ${periode === 'mensuel' ? 'selected' : ''}>Mensuel</option>
+          <option value="annuel" ${periode === 'annuel' ? 'selected' : ''}>Annuel</option>
+        </select>
+      </div>
+      <div class="champ">
+        <label for="bilan-date">${periode === 'annuel' ? 'Choisir une date dans l’année' : (periode === 'mensuel' ? 'Choisir un mois' : 'Choisir une date dans la semaine')}</label>
+        <input type="${periode === 'mensuel' ? 'month' : (periode === 'annuel' ? 'number' : 'date')}" id="bilan-date"
+          value="${periode === 'mensuel' ? date.slice(0, 7) : (periode === 'annuel' ? date.slice(0, 4) : date)}"
+          ${periode === 'annuel' ? 'min="2000" max="2100"' : ''}>
+      </div>
+      ${selecteurSite}
+      <p style="font-size:.82rem;color:var(--brun-500)">Le dimanche est un jour de repos. Il est exclu du bilan hebdomadaire. Toute opération exceptionnelle enregistrée un dimanche reste visible dans les bilans mensuel et annuel.</p>
+    </div>
+    <div class="carte">
+      <h3>Résumé — ${siteChoisi === 'tous' ? 'toute l’entreprise' : esc((etat.sites.find((s) => String(s.id) === siteChoisi) || {}).nom || 'site sélectionné')}</h3>
+      <div class="ligne"><span>Chiffre d’affaires</span><strong class="montant">${fc(t.ventes)}</strong></div>
+      <div class="ligne"><span>Commissions des vendeurs</span><span class="montant">${fc(t.commissions)}</span></div>
+      <div class="ligne"><span>Transport</span><span class="montant">${fc(t.transport)}</span></div>
+      <div class="ligne"><span>Consommables</span><span class="montant">${fc(t.consommables)}</span></div>
+      <div class="ligne"><span>Dépenses des sites</span><span class="montant">${fc(t.depenses_site)}</span></div>
+      ${estRussell && siteChoisi === 'tous' ? `<div class="ligne"><span>Dépenses générales</span><span class="montant">${fc(t.depenses_generales)}</span></div>` : ''}
+      <div class="ligne"><span>Bénéfice des activités avant dépenses enregistrées</span><span class="montant">${fc(t.benefice_activites)}</span></div>
+      <div class="ligne"><strong>Résultat estimé après dépenses enregistrées</strong><strong class="montant">${fc(t.resultat_estime)}</strong></div>
+      <p style="font-size:.8rem;color:var(--brun-500)">Le résultat est estimatif si certaines charges de l’entreprise ne sont pas encore enregistrées dans l’application.</p>
+    </div>
+    ${siteCards}
+    <div class="carte" style="overflow-x:auto">
+      <h3>${periode === 'annuel' ? 'Résultats par mois' : 'Détail de la période'}</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:.88rem">
+        <thead><tr>${enteteTable}</tr></thead>
+        <tbody>${lignesHtml}</tbody>
+      </table>
+    </div>
+  `);
+
+  document.getElementById('bilan-periode').addEventListener('change', (ev) => {
+    etat.bilanPeriode = ev.target.value;
+    chargerBilans();
+  });
+  document.getElementById('bilan-date').addEventListener('change', (ev) => {
+    let valeur = ev.target.value;
+    if (periode === 'mensuel' && /^\\d{4}-\\d{2}$/.test(valeur)) valeur += '-01';
+    if (periode === 'annuel' && /^\\d{4}$/.test(valeur)) valeur += '-01-01';
+    etat.bilanDate = valeur || aujourdhui();
+    chargerBilans();
+  });
+  const selectSiteBilan = document.getElementById('bilan-site');
+  if (selectSiteBilan) {
+    selectSiteBilan.addEventListener('change', (ev) => {
+      etat.bilanSiteId = ev.target.value;
+      chargerBilans();
+    });
+  }
 }
 
 /* ---------------------------------------------------------------------
