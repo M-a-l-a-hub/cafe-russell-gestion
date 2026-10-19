@@ -1037,7 +1037,7 @@ function libelleCategorie(cat) {
 async function chargerVendeurs() {
   afficherVue('vendeurs', '<p class="chargement">Chargement…</p>');
 
-  const vendeurs = await api('/api/vendeurs');
+  const vendeurs = await api('/api/vendeurs?site_id=' + encodeURIComponent(etat.siteId));
   etat.vendeurs = vendeurs;
 
   const html = `
@@ -1086,7 +1086,7 @@ async function chargerVendeurs() {
       const motif = prompt('Motif de la désactivation :');
       if (!motif) return;
       try {
-        await api(`/api/vendeurs/${b.dataset.desactiver}/desactivation`, { method: 'POST', corps: { motif } });
+        await api(`/api/vendeurs/${b.dataset.desactiver}/desactivation`, { method: 'POST', corps: { motif, site_id: etat.siteId } });
         await chargerVendeurs();
       } catch (e) {
         alert(e.message);
@@ -1432,6 +1432,7 @@ function ouvrirModaleNouveauVendeur() {
           telephone: document.getElementById('nv-telephone').value.trim() || null,
           categorie_transport_id: Number(document.getElementById('nv-categorie').value),
           periode_habituelle: document.getElementById('nv-periode').value || null,
+          site_id: etat.siteId,
         },
       });
       fermerModale();
