@@ -183,7 +183,73 @@ const ICONES_MENU = {
   responsable: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M15 11h6"/></svg>',
   couts: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13v5.5A5.5 5.5 0 0 1 11.5 19h-2A5.5 5.5 0 0 1 4 13.5V8Z"/><path d="M17 9.5h1.2a2.3 2.3 0 0 1 0 4.6H17"/></svg>',
   sortie: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h4"/><path d="M14 8l4 4-4 4M18 12H9"/></svg>',
+  motdepasse: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg>',
 };
+
+function ouvrirModaleMotDePasse() {
+  ouvrirModale('Modifier le mot de passe', `
+    <form id="form-mot-de-passe">
+      <div class="champ">
+        <label for="mp-actuel">Mot de passe actuel</label>
+        <input id="mp-actuel" type="password" autocomplete="current-password" maxlength="200" required>
+      </div>
+      <div class="champ">
+        <label for="mp-nouveau">Nouveau mot de passe</label>
+        <input id="mp-nouveau" type="password" autocomplete="new-password" minlength="12" maxlength="200" required>
+        <small>12 caractères minimum.</small>
+      </div>
+      <div class="champ">
+        <label for="mp-confirmation">Confirmer le nouveau mot de passe</label>
+        <input id="mp-confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="200" required>
+      </div>
+      <p class="message-erreur" id="erreur-mp" hidden></p>
+      <button class="principal" type="submit">Enregistrer le nouveau mot de passe</button>
+    </form>
+  `);
+
+  document.getElementById('form-mot-de-passe').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const actuel = document.getElementById('mp-actuel').value;
+    const nouveau = document.getElementById('mp-nouveau').value;
+    const confirmation = document.getElementById('mp-confirmation').value;
+    const erreur = document.getElementById('erreur-mp');
+    const bouton = ev.currentTarget.querySelector('button[type="submit"]');
+
+    erreur.hidden = true;
+    if (nouveau.length < 12) {
+      erreur.textContent = 'Le nouveau mot de passe doit contenir au moins 12 caractères.';
+      erreur.hidden = false;
+      return;
+    }
+    if (nouveau !== confirmation) {
+      erreur.textContent = 'La confirmation ne correspond pas au nouveau mot de passe.';
+      erreur.hidden = false;
+      return;
+    }
+
+    bouton.disabled = true;
+    bouton.textContent = 'Modification…';
+    try {
+      const resultat = await api('/api/mot-de-passe', {
+        method: 'POST',
+        corps: {
+          mot_de_passe_actuel: actuel,
+          nouveau_mot_de_passe: nouveau,
+          confirmation_mot_de_passe: confirmation,
+        },
+      });
+      etat.csrf = resultat.csrf;
+      fermerModale();
+      alert('Mot de passe modifié avec succès.');
+    } catch (e) {
+      erreur.textContent = e.message || 'Impossible de modifier le mot de passe.';
+      erreur.hidden = false;
+    } finally {
+      bouton.disabled = false;
+      bouton.textContent = 'Enregistrer le nouveau mot de passe';
+    }
+  });
+}
 
 function ouvrirMenu() {
   const actions = [];
@@ -196,6 +262,8 @@ function ouvrirMenu() {
       { cle: 'couts', libelle: 'Coûts des tasses', action: ouvrirModaleCouts },
     );
   }
+
+  actions.push({ cle: 'motdepasse', libelle: 'Modifier le mot de passe', action: ouvrirModaleMotDePasse });
 
   actions.push({ cle: 'sortie', libelle: 'Déconnexion', action: deconnecter, danger: true });
 
