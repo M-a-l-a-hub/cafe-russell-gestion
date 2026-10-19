@@ -84,6 +84,7 @@ $r->post('/api/tarifs', [$finances, 'changerTarif'], $russell);
 // --- Vendeurs ------------------------------------------------------------
 $r->post('/api/vendeurs', [$vendeursCtrl, 'creer']);
 $r->post('/api/vendeurs/{id}/categorie-transport', [$vendeursCtrl, 'changerCategorieTransport']);
+$r->post('/api/vendeurs/{id}/affectation', [$vendeursCtrl, 'affecter']);
 $r->post('/api/vendeurs/{id}/desactivation', [$vendeursCtrl, 'desactiver']);
 
 // --- Sites -------------------------------------------------------------
