@@ -309,12 +309,17 @@ async function tenterSessionExistante() {
 async function demarrerApp() {
   // On charge d'abord toutes les données : si une requête échoue, l'écran
   // de connexion reste affiché et peut montrer l'erreur.
-  const [sites, produits, vendeurs, categoriesTransport] = await Promise.all([
+  // Les vendeurs sont maintenant chargés par site : le site doit donc être
+  // connu avant l'appel à /api/vendeurs. Un super-admin sans site doit quand
+  // même pouvoir se connecter pour créer le premier site.
+  const [sites, produits, categoriesTransport] = await Promise.all([
     api('/api/sites'),
     api('/api/produits'),
-    api('/api/vendeurs'),
     api('/api/categories-transport'),
   ]);
+  const vendeurs = sites.length
+    ? await api('/api/vendeurs?site_id=' + encodeURIComponent(sites[0].id))
+    : [];
 
   etat.sites = sites;
   etat.produits = produits;
