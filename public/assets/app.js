@@ -36,8 +36,35 @@ const etat = {
  * Appels API
  * ------------------------------------------------------------------- */
 
+// Cache mémoire très court pour les données de référence fréquemment relues.
+// Les rapports, stocks, journées et bilans financiers ne sont jamais mis en cache ici.
+const CACHE_REFERENCE_MS = 30000;
+const cacheReference = new Map();
+
+function estReferenceStable(chemin) {
+  return /^\/api\/sites(?:\?.*)?$/.test(chemin)
+    || /^\/api\/produits(?:\?.*)?$/.test(chemin)
+    || /^\/api\/categories-(?:transport|depenses)(?:\?.*)?$/.test(chemin)
+    || /^\/api\/vendeurs\?site_id=\d+$/.test(chemin)
+    || /^\/api\/sites\/\d+\/sacs$/.test(chemin);
+}
+
+function invaliderCacheReference() {
+  cacheReference.clear();
+}
+
 async function api(chemin, options = {}) {
   const methode = options.method || 'GET';
+
+  // Réutilise uniquement les référentiels récents. Les données de vente et
+  // financières continuent toujours à être lues depuis le serveur.
+  if (methode === 'GET' && estReferenceStable(chemin)) {
+    const entree = cacheReference.get(chemin);
+    if (entree && Date.now() - entree.date < CACHE_REFERENCE_MS) {
+      return entree.donnees;
+    }
+    if (entree) cacheReference.delete(chemin);
+  }
   const enregistrable = HorsLigne.estEnregistrable(methode, chemin);
   const cle = enregistrable ? HorsLigne.nouvelleCle() : null;
 
@@ -95,6 +122,13 @@ async function api(chemin, options = {}) {
 
   if (methode === 'GET') {
     HorsLigne.mettreEnCache(chemin, donnees.donnees);
+    if (estReferenceStable(chemin)) {
+      cacheReference.set(chemin, { donnees: donnees.donnees, date: Date.now() });
+    }
+  } else {
+    // Toute écriture réussie peut modifier un référentiel (site, vendeur,
+    // sac ou produit). On vide donc le cache après confirmation serveur.
+    invaliderCacheReference();
   }
 
   return donnees.donnees;
