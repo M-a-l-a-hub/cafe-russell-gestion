@@ -69,7 +69,7 @@ fwrite(
     )
 );
 
-$motDePasse = lireSecret('Nouveau mot de passe (10 caractères minimum) : ');
+$motDePasse = lireSecret('Nouveau mot de passe (12 caractères minimum) : ');
 $confirmation = lireSecret('Confirme le mot de passe : ');
 
 if ($motDePasse !== $confirmation) {
@@ -77,8 +77,10 @@ if ($motDePasse !== $confirmation) {
     exit(1);
 }
 
-if (mb_strlen($motDePasse) < 10) {
-    fwrite(STDERR, "Mot de passe trop court (10 caractères minimum) : rien n'a été modifié.\n");
+// Même règle que MotDePasseService : 12 caractères minimum, 200 maximum
+// (longueur en octets, comme le service et la limite de l'API).
+if (strlen($motDePasse) < 12 || strlen($motDePasse) > 200) {
+    fwrite(STDERR, "Mot de passe invalide (12 à 200 caractères) : rien n'a été modifié.\n");
     exit(1);
 }
 

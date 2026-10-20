@@ -9,7 +9,8 @@ require_once __DIR__ . '/../http/HttpException.php';
  * Vérification téléphone + mot de passe, avec limitation des essais :
  *  - 5 échecs en 15 minutes pour un même numéro depuis une même adresse ;
  *  - 20 échecs en 15 minutes pour un même numéro, toutes adresses
- *    confondues.
+ *    confondues : au-delà, seules les adresses qui se sont déjà connectées
+ *    à ce compte (30 derniers jours) peuvent encore essayer.
  * Le message d'échec est identique que le numéro existe ou non.
  */
 final class AuthService extends ServiceBase
@@ -154,16 +155,47 @@ final class AuthService extends ServiceBase
             ['telephone' => $telephone]
         );
 
+        $bloque = (int) ($parAdresse['n'] ?? 0) >= self::MAX_ECHECS_PAR_ADRESSE;
+
+        // Quota global par numéro : il bloque les adresses inconnues, mais
+        // pas celles qui ont déjà réussi à se connecter à ce compte. Sinon
+        // quelqu'un qui connaît un numéro pourrait enfermer dehors son
+        // propriétaire en multipliant les échecs. Le quota par adresse
+        // ci-dessus reste appliqué à tout le monde.
         if (
-            (int) ($parAdresse['n'] ?? 0) >= self::MAX_ECHECS_PAR_ADRESSE
-            || (int) ($parNumero['n'] ?? 0) >= self::MAX_ECHECS_PAR_NUMERO
+            !$bloque
+            && (int) ($parNumero['n'] ?? 0) >= self::MAX_ECHECS_PAR_NUMERO
+            && !$this->adresseDejaConnue($telephone, $ip)
         ) {
+            $bloque = true;
+        }
+
+        if ($bloque) {
             throw new HttpException(
                 429,
                 'trop_de_tentatives',
                 'Trop de tentatives échouées. Réessaie dans quelques minutes.'
             );
         }
+    }
+
+    /** Une connexion réussie à ce compte depuis cette adresse, ces 30 derniers jours. */
+    private function adresseDejaConnue(string $telephone, string $ip): bool
+    {
+        $ligne = $this->fetchOne(
+            "
+            SELECT 1 AS connue
+            FROM tentatives_connexion
+            WHERE telephone = :telephone
+              AND adresse_ip = :ip
+              AND reussie = TRUE
+              AND created_at > NOW() - INTERVAL '30 days'
+            LIMIT 1
+            ",
+            ['telephone' => $telephone, 'ip' => $ip]
+        );
+
+        return $ligne !== null;
     }
 
     private function noterTentative(string $telephone, string $ip, bool $reussie): void

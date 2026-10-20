@@ -80,8 +80,13 @@ final class Requete
 
         $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
 
-        // Derrière un proxy de confiance (Render, etc.) : la dernière
-        // adresse de X-Forwarded-For est celle vue par le proxy.
+        // Derrière un ou plusieurs proxys de confiance (Render, etc.) :
+        // chaque proxy ajoute à la fin de X-Forwarded-For l'adresse qu'il a
+        // vue. Le début de la liste peut être falsifié par le client : on
+        // compte donc depuis la FIN. TRUST_PROXY_HOPS = nombre de proxys de
+        // confiance devant l'application (1 = dernière adresse, 2 =
+        // avant-dernière, etc.). Adresse invalide ou liste trop courte :
+        // on garde REMOTE_ADDR.
         $confianceProxy = filter_var(
             $_ENV['TRUST_PROXY'] ?? 'false',
             FILTER_VALIDATE_BOOLEAN
@@ -89,10 +94,11 @@ final class Requete
 
         if ($confianceProxy && isset($entetes['x-forwarded-for'])) {
             $liste = array_map('trim', explode(',', $entetes['x-forwarded-for']));
-            $derniere = end($liste);
+            $sauts = max(1, min(5, (int) ($_ENV['TRUST_PROXY_HOPS'] ?? 1)));
+            $candidate = $liste[count($liste) - $sauts] ?? null;
 
-            if ($derniere !== false && filter_var($derniere, FILTER_VALIDATE_IP) !== false) {
-                $ip = $derniere;
+            if ($candidate !== null && filter_var($candidate, FILTER_VALIDATE_IP) !== false) {
+                $ip = $candidate;
             }
         }
 
