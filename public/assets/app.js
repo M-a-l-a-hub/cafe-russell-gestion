@@ -177,6 +177,7 @@ formConnexion.addEventListener('submit', async (ev) => {
   const bouton = formConnexion.querySelector('button');
   bouton.disabled = true;
   bouton.textContent = 'Connexion…';
+  invaliderCacheReference();
 
   try {
     const { utilisateur, csrf } = await api('/api/login', {
@@ -206,6 +207,7 @@ formConnexion.addEventListener('submit', async (ev) => {
 });
 
 async function deconnecter() {
+  invaliderCacheReference();
   try { await api('/api/logout', { method: 'POST' }); } catch { /* on quitte quand même */ }
   await HorsLigne.viderCache();
   window.location.reload();
