@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../services/JourneeService.php';
+
 /**
  * Chaîne complète d'une requête : route → session → CSRF → rôle →
  * contrôleur → réponse JSON. Toute exception est convertie en erreur
@@ -60,6 +62,19 @@ final class Application
                     'acces_refuse',
                     'Cette opération est réservée au super administrateur.'
                 );
+            }
+        }
+
+        // Avant toute écriture, on clôture les journées dont l'heure de
+        // coupure (05 h 00) est passée. Sans cela, une saisie arrivant avant
+        // la première lecture du matin passerait encore sur la journée
+        // d'hier. Fait AVANT la transaction d'idempotence : la clôture ne
+        // doit pas être annulée si la saisie elle-même est refusée.
+        if ($requete->methode !== 'GET' && $requete->utilisateur !== null) {
+            try {
+                (new JourneeService())->cloturerJourneesEnRetard();
+            } catch (Throwable $e) {
+                error_log('Clôture automatique avant écriture impossible : ' . $e->getMessage());
             }
         }
 

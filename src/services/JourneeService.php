@@ -369,11 +369,22 @@ class JourneeService
             return false;
         }
 
-        $coupure = (new DateTimeImmutable(substr($dateJour, 0, 10) . ' 00:00:00'))
+        return new DateTimeImmutable('now') >= self::heureCoupure($dateJour);
+    }
+
+    /**
+     * Instant exact (fuseau de l'application) où la journée $dateJour doit
+     * être clôturée : le lendemain à HEURE_COUPURE_AUTO. Le fuseau explicite
+     * rend l'instant non ambigu pour une colonne TIMESTAMPTZ.
+     */
+    public static function heureCoupure(string $dateJour): DateTimeImmutable
+    {
+        return (new DateTimeImmutable(
+            substr($dateJour, 0, 10) . ' 00:00:00',
+            new DateTimeZone(FUSEAU_HORAIRE_APPLICATION)
+        ))
             ->modify('+1 day')
             ->setTime(self::HEURE_COUPURE_AUTO, 0);
-
-        return new DateTimeImmutable('now') >= $coupure;
     }
 
     /**
@@ -444,7 +455,7 @@ class JourneeService
             function () use ($journeeId): bool {
                 $stmt = $this->db->prepare(
                     "
-                    SELECT id, site_id, statut, ouverte_par
+                    SELECT id, site_id, statut, ouverte_par, date_jour, date_ouverture
                     FROM journees
                     WHERE id = :id
                     FOR UPDATE
@@ -455,6 +466,20 @@ class JourneeService
 
                 if ($journee === false || $journee['statut'] !== 'ouverte') {
                     return false;
+                }
+
+                // L'heure de clôture enregistrée est l'heure de coupure
+                // (05 h 00), pas l'instant où le serveur, endormi la nuit,
+                // s'en aperçoit. L'exécution réelle reste dans l'audit.
+                $coupure = self::heureCoupure((string) $journee['date_jour']);
+                $executeeLe = new DateTimeImmutable('now');
+
+                // Journée d'une date passée ouverte après sa coupure : on ne
+                // clôture jamais avant l'ouverture.
+                $ouverteLe = new DateTimeImmutable((string) $journee['date_ouverture']);
+
+                if ($coupure < $ouverteLe) {
+                    $coupure = $executeeLe;
                 }
 
                 $stmt = $this->db->prepare(
@@ -483,14 +508,18 @@ class JourneeService
                     SET
                         statut = 'cloturee',
                         cloturee_par = ouverte_par,
-                        date_cloture = NOW(),
+                        date_cloture = CAST(:coupure AS TIMESTAMPTZ),
                         note_cloture = :note,
                         updated_at = NOW()
                     WHERE id = :id
                       AND statut = 'ouverte'
                     "
                 );
-                $stmt->execute(['id' => $journeeId, 'note' => $note]);
+                $stmt->execute([
+                    'id' => $journeeId,
+                    'note' => $note,
+                    'coupure' => $coupure->format('c'),
+                ]);
 
                 if ($stmt->rowCount() !== 1) {
                     return false;
@@ -504,7 +533,11 @@ class JourneeService
                     $journeeId,
                     (int) $journee['site_id'],
                     ['statut' => 'ouverte'],
-                    ['statut' => 'cloturee'],
+                    [
+                        'statut' => 'cloturee',
+                        'date_cloture' => $coupure->format('c'),
+                        'executee_le' => $executeeLe->format('c'),
+                    ],
                     $note
                 );
 
