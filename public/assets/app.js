@@ -218,6 +218,7 @@ const ICONES_MENU = {
   gerer: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>',
   responsable: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M15 11h6"/></svg>',
   couts: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13v5.5A5.5 5.5 0 0 1 11.5 19h-2A5.5 5.5 0 0 1 4 13.5V8Z"/><path d="M17 9.5h1.2a2.3 2.3 0 0 1 0 4.6H17"/></svg>',
+  transport: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7.5" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/></svg>',
   sortie: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h4"/><path d="M14 8l4 4-4 4M18 12H9"/></svg>',
   motdepasse: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg>',
 };
@@ -296,6 +297,7 @@ function ouvrirMenu() {
       { cle: 'gerer', libelle: 'Gérer les sites', action: ouvrirGestionSites },
       { cle: 'responsable', libelle: 'Nouveau responsable', action: ouvrirModaleNouveauResponsable },
       { cle: 'couts', libelle: 'Coûts des tasses', action: ouvrirModaleCouts },
+      { cle: 'transport', libelle: 'Tarifs de transport', action: ouvrirModaleTransport },
     );
   }
 
@@ -1317,6 +1319,106 @@ async function ouvrirModaleCouts() {
       fermerModale();
     } catch (e) {
       erreur.textContent = e.message;
+      erreur.hidden = false;
+    }
+  });
+}
+
+async function ouvrirModaleTransport() {
+  let categories;
+  try {
+    categories = await api('/api/categories-transport');
+  } catch (e) {
+    ouvrirModale('Tarifs de transport', `<p class="message-erreur">${esc(e.message)}</p>`);
+    return;
+  }
+
+  etat.categoriesTransport = categories;
+
+  ouvrirModale('Tarifs de transport', `
+    <form id="form-transport">
+      <p style="color:var(--brun-500);font-size:.9rem">
+        Montant de transport payé par ravitaillement, selon la catégorie du vendeur.
+        Le nouveau tarif s'applique aux ravitaillements à partir de la date choisie ;
+        les ravitaillements déjà enregistrés ne changent pas.
+        Laisse vide pour ne pas modifier. Le tarif est le même pour tous les sites.
+      </p>
+      <div class="grille-produits">
+        ${categories.map((c) => `
+          <div class="champ">
+            <label>${esc(c.nom)} — actuel : ${c.tarif_actuel === null || c.tarif_actuel === undefined ? 'non défini' : fc(c.tarif_actuel)}</label>
+            <input type="text" inputmode="decimal" placeholder="Nouveau montant en FC" data-transport-categorie="${c.id}">
+          </div>
+        `).join('') || '<p class="liste-vide">Aucune catégorie de transport.</p>'}
+      </div>
+      <div class="champ">
+        <label>Applicable à partir du</label>
+        <input type="date" id="transport-date" value="${aujourdhui()}" required>
+      </div>
+      <div class="champ">
+        <label>Motif (facultatif)</label>
+        <input type="text" id="transport-motif" maxlength="255">
+      </div>
+      <p class="message-erreur" id="erreur-transport" hidden></p>
+      <button class="principal" type="submit">Enregistrer</button>
+    </form>
+  `);
+
+  document.getElementById('form-transport').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+
+    const erreur = document.getElementById('erreur-transport');
+    erreur.hidden = true;
+
+    const dateDebut = document.getElementById('transport-date').value;
+    const motif = document.getElementById('transport-motif').value.trim();
+
+    const changements = [];
+    for (const champ of document.querySelectorAll('[data-transport-categorie]')) {
+      const brut = champ.value.trim();
+      if (brut === '') continue;
+
+      const valeur = Number(brut.replace(/\s/g, '').replace(',', '.'));
+      if (!Number.isFinite(valeur) || valeur < 0) {
+        erreur.textContent = 'Chaque montant doit être un nombre positif ou nul.';
+        erreur.hidden = false;
+        return;
+      }
+      changements.push({ entite_id: Number(champ.dataset.transportCategorie), valeur });
+    }
+
+    if (changements.length === 0) {
+      erreur.textContent = 'Saisis au moins un nouveau montant.';
+      erreur.hidden = false;
+      return;
+    }
+
+    const faits = [];
+
+    try {
+      for (const c of changements) {
+        await api('/api/tarifs', {
+          method: 'POST',
+          corps: {
+            type: 'transport',
+            entite_id: c.entite_id,
+            valeur: c.valeur,
+            date_debut: dateDebut,
+            motif: motif || undefined,
+          },
+        });
+        faits.push(c.entite_id);
+      }
+      etat.categoriesTransport = await api('/api/categories-transport');
+      fermerModale();
+    } catch (e) {
+      // Les catégories déjà enregistrées ne sont pas annulées : on le dit,
+      // pour éviter une double saisie au nouvel essai.
+      try { etat.categoriesTransport = await api('/api/categories-transport'); } catch { /* ignoré */ }
+
+      erreur.textContent = faits.length > 0
+        ? `${e.message} (${faits.length} catégorie(s) déjà enregistrée(s) : rouvre cette fenêtre pour vérifier.)`
+        : e.message;
       erreur.hidden = false;
     }
   });

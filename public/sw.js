@@ -4,7 +4,7 @@
  *   hors connexion, mais les actions métier exigent le serveur).
  * Incrémenter VERSION pour forcer le renouvellement du cache.
  */
-const VERSION = 'cafe-russell-v10';
+const VERSION = 'cafe-russell-v11';
 
 const COQUILLE = [
   '/',
